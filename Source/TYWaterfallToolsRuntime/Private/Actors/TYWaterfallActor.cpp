@@ -2,6 +2,7 @@
 
 #include "Actors/TYWaterfallActor.h"
 
+#include "Components/TYWaterfallPathComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/SplineComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -37,6 +38,16 @@ ATYWaterfallActor::ATYWaterfallActor()
 	BakedMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 #if WITH_EDITORONLY_DATA
+	PreviewPath = CreateEditorOnlyDefaultSubobject<UTYWaterfallPathComponent>(TEXT("PreviewPath"));
+	if (PreviewPath)
+	{
+		PreviewPath->SetupAttachment(RootComp);
+		PreviewPath->SetVisibility(true);
+		PreviewPath->SetHiddenInGame(true);
+	}
+#endif
+
+#if WITH_EDITORONLY_DATA
 	KillPlaneComponent = CreateEditorOnlyDefaultSubobject<UStaticMeshComponent>(TEXT("KillPlane"));
 	if (KillPlaneComponent)
 	{
@@ -56,3 +67,21 @@ ATYWaterfallActor::ATYWaterfallActor()
 	}
 #endif
 }
+
+#if WITH_EDITOR
+void ATYWaterfallActor::GeneratePreviewPath()
+{
+	if (PreviewPath)
+	{
+		PreviewPath->GeneratePreviewPath();
+	}
+}
+
+void ATYWaterfallActor::ClearPreviewPath()
+{
+	if (PreviewPath)
+	{
+		PreviewPath->ClearPreviewPath();
+	}
+}
+#endif

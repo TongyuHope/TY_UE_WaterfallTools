@@ -765,3 +765,11 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 验证方式：用户已在 UE 5.8 中重新生成工程文件并成功编译，确认 Actor 放置、样条编辑、保存和重开关卡均正常。
 - 遗留问题：终止平面的可视化交互将在后续 Editor Mode 阶段完善。
 - 下一步：进入阶段 2 的单条路径模拟。
+
+### 2026-09-18 - 阶段 2 / 单条路径模拟实现
+
+- 完成：新增 `UTYWaterfallPathComponent`、模拟点状态和 Actor 的生成/清除预览路径操作。
+- 修改文件：`Source/TYWaterfallToolsRuntime/Public/Components/TYWaterfallPathComponent.h`、`Source/TYWaterfallToolsRuntime/Private/Components/TYWaterfallPathComponent.cpp`、Actor 头文件和实现文件。
+- 验证方式：完成静态检查；等待用户在 UE 5.8 中编译，并使用 Actor Details 面板中的 `Generate Preview Path` / `Clear Preview Path` 验证。
+- 遗留问题：当前模拟在编辑器按钮调用期间同步执行，分帧 Builder 安排在阶段 3；终止高度暂时以 Actor Z 为基准。
+- 下一步：确认自由落体、碰撞滑动、固定 Seed/参数可复现和清理路径，然后进入阶段 3。
