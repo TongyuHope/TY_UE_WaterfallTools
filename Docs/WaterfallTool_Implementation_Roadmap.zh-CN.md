@@ -213,15 +213,15 @@ Source/TYWaterfallToolsRuntime/Private/TYWaterfallToolsRuntimeModule.cpp
 
 ### 实施步骤
 
-- [ ] 创建 `ATYWaterfallActor`。
-- [ ] 添加 `USceneComponent` 根组件。
-- [ ] 添加顶部 `USplineComponent`。
-- [ ] 设置两个默认样条点，形成可编辑的瀑布顶部宽度。
-- [ ] 添加用于最终烘焙结果的 `UStaticMeshComponent`。
-- [ ] 添加 Editor-only 的终止平面可视化组件。
-- [ ] 使用 `WITH_EDITORONLY_DATA` 隔离纯编辑器组件。
-- [ ] 默认关闭运行时 Tick。
-- [ ] 在编辑器中验证移动、旋转、复制和保存 Actor。
+- [x] 创建 `ATYWaterfallActor`。
+- [x] 添加 `USceneComponent` 根组件。
+- [x] 添加顶部 `USplineComponent`。
+- [x] 设置两个默认样条点，形成可编辑的瀑布顶部宽度。
+- [x] 添加用于最终烘焙结果的 `UStaticMeshComponent`。
+- [x] 添加 Editor-only 的终止平面可视化组件。
+- [x] 使用 `WITH_EDITORONLY_DATA` 隔离纯编辑器组件。
+- [x] 默认关闭运行时 Tick。
+- [x] 在编辑器中验证移动、旋转、复制和保存 Actor。
 
 ### 建议接口
 
@@ -757,3 +757,11 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 验证方式：用户已在 UE 5.8 下完成 Development Editor 编译。
 - 遗留问题：尚未进行非 Editor Target 打包验证，安排在发布测试阶段。
 - 下一步：创建 `ATYWaterfallActor` 和阶段 1 所需默认组件。
+
+### 2026-09-18 - 阶段 1 / Actor 骨架实现
+
+- 完成：新增 `ATYWaterfallActor`，包含根组件、顶部样条、隐藏的烘焙网格组件和 Editor-only 终止平面。
+- 修改文件：`Source/TYWaterfallToolsRuntime/Public/Actors/TYWaterfallActor.h`、`Source/TYWaterfallToolsRuntime/Private/Actors/TYWaterfallActor.cpp`。
+- 验证方式：用户已在 UE 5.8 中重新生成工程文件并成功编译，确认 Actor 放置、样条编辑、保存和重开关卡均正常。
+- 遗留问题：终止平面的可视化交互将在后续 Editor Mode 阶段完善。
+- 下一步：进入阶段 2 的单条路径模拟。
