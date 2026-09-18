@@ -3,6 +3,7 @@ Binaries/
 Intermediate/
 DerivedDataCache/
 Saved/
+Resources/
 
 # IDE and local tooling files
 .vs/

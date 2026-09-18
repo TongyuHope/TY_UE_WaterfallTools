@@ -36,6 +36,7 @@ public class TYWaterfallTools : ModuleRules
 			{
 				"CoreUObject",
 				"Engine",
+				"TYWaterfallToolsRuntime",
 				"Slate",
 				"SlateCore",
 				"InputCore",
