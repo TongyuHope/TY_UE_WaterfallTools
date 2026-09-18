@@ -1,0 +1,24 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "TYWaterfallTools",
+	"Description": "",
+	"Category": "Other",
+	"CreatedBy": "TY_Liu",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "TYWaterfallTools",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	]
+}
