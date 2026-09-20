@@ -466,16 +466,16 @@ struct FTYWaterfallSample
 
 ### 实施步骤
 
-- [ ] 精简当前模板生成的示例 Tool。
-- [ ] Editor Mode 进入时识别当前选择的 `ATYWaterfallActor`。
-- [ ] 未选择瀑布时显示创建/选择提示。
-- [ ] 添加 Generate Paths 按钮。
-- [ ] 添加 Generate Mesh 按钮。
-- [ ] 添加 Clear 按钮。
-- [ ] 添加 Cancel 按钮和生成进度状态。
-- [ ] 生成期间禁用会破坏状态的控件。
-- [ ] Actor 选择变化时刷新 Toolkit。
-- [ ] Editor Mode 退出时解绑 Delegate 并取消未完成任务。
+- [x] 从 Editor Mode 入口移除当前模板生成的示例 Tool。
+- [x] Editor Mode 进入时识别当前选择的 `ATYWaterfallActor`。
+- [x] 未选择瀑布时显示选择提示。
+- [x] 添加 Generate Paths 按钮。
+- [x] 添加 Generate Mesh 按钮。
+- [x] 添加 Clear All 按钮。
+- [x] 添加 Cancel 按钮和生成进度状态。
+- [x] 生成期间禁用会破坏状态的控件。
+- [x] Actor 选择变化时刷新 Toolkit。
+- [x] Editor Mode 退出时取消未完成任务并释放 Actor 弱引用。
 
 ### UI 原则
 
@@ -810,3 +810,14 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 修改文件：`Data/TYWaterfallSample.h`、Path Component、Path Builder、Mesh Builder、Mesh Component。
 - 验证方式：用户已完成编译，并使用 Debug Material 验证距离、速度、湍流、冲击和稳定随机通道正确。
 - 下一步：提交阶段 5，然后进入阶段 6 的 Editor Mode 最小工作流。
+
+### 2026-09-20 - 阶段 6 / Editor Mode 最小工作流
+
+- 完成：Editor Mode 跟踪当前选择的瀑布 Actor，Toolkit 提供路径生成、网格生成、全部清理、取消和实时进度。
+- 生命周期：Mode 和 Toolkit 只保存 Actor 弱引用；选择变化时刷新；退出 Mode 时取消仍在运行的路径任务并释放引用。
+- UI：无选择时显示提示；生成期间禁用生成和清理按钮，仅允许取消；Actor 参数继续显示在内嵌 Details View。
+- 模板清理：示例 Tool 不再注册或显示，源文件暂时保留，避免本阶段混入文件删除。
+- 修改文件：Editor Mode、Editor Mode Toolkit、`.gitignore` 和本路线图。
+- 验证方式：用户已完成编译，并验证选择切换、按钮状态、进度、取消、清理以及退出 Mode 生命周期正确。
+- UE 5.8 兼容：`SHorizontalBox` 和 `SVerticalBox` 统一由 `Widgets/SBoxPanel.h` 提供。
+- 下一步：提交阶段 6，然后进入阶段 7 的 Details 定制和路径可视化。

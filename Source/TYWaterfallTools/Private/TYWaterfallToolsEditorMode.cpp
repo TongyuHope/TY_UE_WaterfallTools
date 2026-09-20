@@ -2,36 +2,18 @@
 
 #include "TYWaterfallToolsEditorMode.h"
 #include "TYWaterfallToolsEditorModeToolkit.h"
-#include "EdModeInteractiveToolsContext.h"
-#include "InteractiveToolManager.h"
-#include "TYWaterfallToolsEditorModeCommands.h"
-#include "Modules/ModuleManager.h"
 
-
-//////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////// 
-// AddYourTool Step 1 - include the header file for your Tools here
-//////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////// 
-#include "Tools/TYWaterfallToolsSimpleTool.h"
-#include "Tools/TYWaterfallToolsInteractiveTool.h"
-
-// step 2: register a ToolBuilder in FTYWaterfallToolsEditorMode::Enter() below
+#include "Actors/TYWaterfallActor.h"
+#include "Editor.h"
+#include "Engine/Selection.h"
 
 
 #define LOCTEXT_NAMESPACE "TYWaterfallToolsEditorMode"
 
 const FEditorModeID UTYWaterfallToolsEditorMode::EM_TYWaterfallToolsEditorModeId = TEXT("EM_TYWaterfallToolsEditorMode");
 
-FString UTYWaterfallToolsEditorMode::SimpleToolName = TEXT("TYWaterfallTools_ActorInfoTool");
-FString UTYWaterfallToolsEditorMode::InteractiveToolName = TEXT("TYWaterfallTools_MeasureDistanceTool");
-
-
 UTYWaterfallToolsEditorMode::UTYWaterfallToolsEditorMode()
 {
-	FModuleManager::Get().LoadModule("EditorStyle");
-
-	// appearance and icon in the editing mode ribbon can be customized here
 	Info = FEditorModeInfo(UTYWaterfallToolsEditorMode::EM_TYWaterfallToolsEditorModeId,
 		LOCTEXT("ModeName", "TYWaterfallTools"),
 		FSlateIcon(),
@@ -46,25 +28,35 @@ UTYWaterfallToolsEditorMode::~UTYWaterfallToolsEditorMode()
 
 void UTYWaterfallToolsEditorMode::ActorSelectionChangeNotify()
 {
+	Super::ActorSelectionChangeNotify();
+	RefreshSelectedWaterfall();
 }
 
 void UTYWaterfallToolsEditorMode::Enter()
 {
 	UEdMode::Enter();
+	RefreshSelectedWaterfall();
+}
 
-	//////////////////////////////////////////////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////
-	// AddYourTool Step 2 - register the ToolBuilders for your Tools here.
-	// The string name you pass to the ToolManager is used to select/activate your ToolBuilder later.
-	//////////////////////////////////////////////////////////////////////////
-	////////////////////////////////////////////////////////////////////////// 
-	const FTYWaterfallToolsEditorModeCommands& SampleToolCommands = FTYWaterfallToolsEditorModeCommands::Get();
+void UTYWaterfallToolsEditorMode::Exit()
+{
+	// Generation is owned by the actor, so leaving the mode must explicitly stop
+	// any editor-time task before the toolkit releases its selection reference.
+	if (ATYWaterfallActor* Waterfall = SelectedWaterfall.Get())
+	{
+		if (Waterfall->IsGeneratingPaths())
+		{
+			Waterfall->CancelPathGeneration();
+		}
+	}
 
-	RegisterTool(SampleToolCommands.SimpleTool, SimpleToolName, NewObject<UTYWaterfallToolsSimpleToolBuilder>(this));
-	RegisterTool(SampleToolCommands.InteractiveTool, InteractiveToolName, NewObject<UTYWaterfallToolsInteractiveToolBuilder>(this));
+	SelectedWaterfall.Reset();
+	if (Toolkit.IsValid())
+	{
+		StaticCastSharedPtr<FTYWaterfallToolsEditorModeToolkit>(Toolkit)->SetSelectedWaterfall(nullptr);
+	}
 
-	// active tool type is not relevant here, we just set to default
-	GetToolManager()->SelectActiveToolType(EToolSide::Left, SimpleToolName);
+	UEdMode::Exit();
 }
 
 void UTYWaterfallToolsEditorMode::CreateToolkit()
@@ -74,7 +66,32 @@ void UTYWaterfallToolsEditorMode::CreateToolkit()
 
 TMap<FName, TArray<TSharedPtr<FUICommandInfo>>> UTYWaterfallToolsEditorMode::GetModeCommands() const
 {
-	return FTYWaterfallToolsEditorModeCommands::Get().GetCommands();
+	return {};
+}
+
+void UTYWaterfallToolsEditorMode::RefreshSelectedWaterfall()
+{
+	SelectedWaterfall.Reset();
+	if (GEditor)
+	{
+		if (USelection* Selection = GEditor->GetSelectedActors())
+		{
+			for (FSelectionIterator It(*Selection); It; ++It)
+			{
+				if (ATYWaterfallActor* Waterfall = Cast<ATYWaterfallActor>(*It))
+				{
+					SelectedWaterfall = Waterfall;
+					break;
+				}
+			}
+		}
+	}
+
+	if (Toolkit.IsValid())
+	{
+		StaticCastSharedPtr<FTYWaterfallToolsEditorModeToolkit>(Toolkit)
+			->SetSelectedWaterfall(SelectedWaterfall.Get());
+	}
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -2,12 +2,16 @@
 
 #include "TYWaterfallToolsEditorModeToolkit.h"
 #include "TYWaterfallToolsEditorMode.h"
-#include "Engine/Selection.h"
 
-#include "Modules/ModuleManager.h"
-#include "PropertyEditorModule.h"
+#include "Actors/TYWaterfallActor.h"
 #include "IDetailsView.h"
-#include "EditorModeManager.h"
+#include "Styling/AppStyle.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/SBoxPanel.h"
+#include "Widgets/Notifications/SProgressBar.h"
+#include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "TYWaterfallToolsEditorModeToolkit"
 
@@ -18,11 +22,92 @@ FTYWaterfallToolsEditorModeToolkit::FTYWaterfallToolsEditorModeToolkit()
 void FTYWaterfallToolsEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& InitToolkitHost, TWeakObjectPtr<UEdMode> InOwningMode)
 {
 	FModeToolkit::Init(InitToolkitHost, InOwningMode);
+
+	ToolkitWidget = SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 8.0f, 8.0f, 2.0f)
+		[
+			SNew(STextBlock)
+			.Text(this, &FTYWaterfallToolsEditorModeToolkit::GetSelectionText)
+			.Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 2.0f)
+		[
+			SNew(STextBlock)
+			.Text(this, &FTYWaterfallToolsEditorModeToolkit::GetStatusText)
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 4.0f)
+		[
+			SNew(SProgressBar)
+			.Percent(this, &FTYWaterfallToolsEditorModeToolkit::GetGenerationProgress)
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 4.0f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("GeneratePaths", "Generate Paths"))
+				.ToolTipText(LOCTEXT("GeneratePathsTooltip", "Generate deterministic waterfall paths."))
+				.IsEnabled(this, &FTYWaterfallToolsEditorModeToolkit::CanRunGenerationCommand)
+				.OnClicked(this, &FTYWaterfallToolsEditorModeToolkit::OnGeneratePathsClicked)
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.Padding(4.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("GenerateMesh", "Generate Mesh"))
+				.ToolTipText(LOCTEXT("GenerateMeshTooltip", "Build ribbon geometry from the generated paths."))
+				.IsEnabled(this, &FTYWaterfallToolsEditorModeToolkit::CanRunGenerationCommand)
+				.OnClicked(this, &FTYWaterfallToolsEditorModeToolkit::OnGenerateMeshClicked)
+			]
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 4.0f, 8.0f, 8.0f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("ClearAll", "Clear All"))
+				.ToolTipText(LOCTEXT("ClearAllTooltip", "Remove generated paths and their derived mesh."))
+				.IsEnabled(this, &FTYWaterfallToolsEditorModeToolkit::CanRunGenerationCommand)
+				.OnClicked(this, &FTYWaterfallToolsEditorModeToolkit::OnClearClicked)
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.Padding(4.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("Cancel", "Cancel"))
+				.ToolTipText(LOCTEXT("CancelTooltip", "Cancel the active path generation task."))
+				.IsEnabled(this, &FTYWaterfallToolsEditorModeToolkit::CanCancelGeneration)
+				.OnClicked(this, &FTYWaterfallToolsEditorModeToolkit::OnCancelClicked)
+			]
+		]
+		+ SVerticalBox::Slot()
+		.FillHeight(1.0f)
+		.Padding(8.0f, 4.0f)
+		[
+			ModeDetailsView.ToSharedRef()
+		];
 }
 
 void FTYWaterfallToolsEditorModeToolkit::GetToolPaletteNames(TArray<FName>& PaletteNames) const
 {
-	PaletteNames.Add(NAME_Default);
 }
 
 
@@ -33,7 +118,104 @@ FName FTYWaterfallToolsEditorModeToolkit::GetToolkitFName() const
 
 FText FTYWaterfallToolsEditorModeToolkit::GetBaseToolkitName() const
 {
-	return LOCTEXT("DisplayName", "TYWaterfallToolsEditorMode Toolkit");
+	return LOCTEXT("DisplayName", "TY Waterfall Tools");
+}
+
+TSharedPtr<SWidget> FTYWaterfallToolsEditorModeToolkit::GetInlineContent() const
+{
+	return ToolkitWidget;
+}
+
+void FTYWaterfallToolsEditorModeToolkit::SetSelectedWaterfall(ATYWaterfallActor* InWaterfall)
+{
+	SelectedWaterfall = InWaterfall;
+	if (ModeDetailsView.IsValid())
+	{
+		ModeDetailsView->SetObject(InWaterfall);
+	}
+}
+
+FText FTYWaterfallToolsEditorModeToolkit::GetSelectionText() const
+{
+	if (const ATYWaterfallActor* Waterfall = SelectedWaterfall.Get())
+	{
+		return FText::FromString(Waterfall->GetActorLabel());
+	}
+	return LOCTEXT("NoSelection", "Select a TY Waterfall Actor");
+}
+
+FText FTYWaterfallToolsEditorModeToolkit::GetStatusText() const
+{
+	const ATYWaterfallActor* Waterfall = SelectedWaterfall.Get();
+	if (!Waterfall)
+	{
+		return LOCTEXT("NoSelectionStatus", "No waterfall selected");
+	}
+	if (Waterfall->IsGeneratingPaths())
+	{
+		return FText::Format(LOCTEXT("GeneratingStatus", "Generating paths: {0}"),
+			FText::AsPercent(Waterfall->GetPathGenerationProgress()));
+	}
+	return LOCTEXT("ReadyStatus", "Ready");
+}
+
+TOptional<float> FTYWaterfallToolsEditorModeToolkit::GetGenerationProgress() const
+{
+	if (const ATYWaterfallActor* Waterfall = SelectedWaterfall.Get())
+	{
+		return Waterfall->IsGeneratingPaths()
+			? Waterfall->GetPathGenerationProgress()
+			: 0.0f;
+	}
+	return 0.0f;
+}
+
+bool FTYWaterfallToolsEditorModeToolkit::CanRunGenerationCommand() const
+{
+	const ATYWaterfallActor* Waterfall = SelectedWaterfall.Get();
+	return Waterfall && !Waterfall->IsGeneratingPaths();
+}
+
+bool FTYWaterfallToolsEditorModeToolkit::CanCancelGeneration() const
+{
+	const ATYWaterfallActor* Waterfall = SelectedWaterfall.Get();
+	return Waterfall && Waterfall->IsGeneratingPaths();
+}
+
+FReply FTYWaterfallToolsEditorModeToolkit::OnGeneratePathsClicked()
+{
+	if (ATYWaterfallActor* Waterfall = SelectedWaterfall.Get())
+	{
+		Waterfall->GeneratePaths();
+	}
+	return FReply::Handled();
+}
+
+FReply FTYWaterfallToolsEditorModeToolkit::OnGenerateMeshClicked()
+{
+	if (ATYWaterfallActor* Waterfall = SelectedWaterfall.Get())
+	{
+		Waterfall->GeneratePerPathMesh();
+	}
+	return FReply::Handled();
+}
+
+FReply FTYWaterfallToolsEditorModeToolkit::OnClearClicked()
+{
+	if (ATYWaterfallActor* Waterfall = SelectedWaterfall.Get())
+	{
+		Waterfall->ClearGeneratedPaths();
+	}
+	return FReply::Handled();
+}
+
+FReply FTYWaterfallToolsEditorModeToolkit::OnCancelClicked()
+{
+	if (ATYWaterfallActor* Waterfall = SelectedWaterfall.Get())
+	{
+		Waterfall->CancelPathGeneration();
+	}
+	return FReply::Handled();
 }
 
 #undef LOCTEXT_NAMESPACE

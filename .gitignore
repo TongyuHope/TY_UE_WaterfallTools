@@ -4,6 +4,7 @@ Intermediate/
 DerivedDataCache/
 Saved/
 Resources/
+Content/
 
 # IDE and local tooling files
 .vs/
