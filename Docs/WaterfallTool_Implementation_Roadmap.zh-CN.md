@@ -430,15 +430,26 @@ struct FTYWaterfallSample
 
 ### 实施步骤
 
-- [ ] 按距离重采样，不直接使用不均匀的模拟点作为顶点。
-- [ ] 缓存 Position、Tangent、Normal、Velocity 和 Distance。
-- [ ] 基于碰撞冲击和方向变化计算简化 Turbulence。
-- [ ] 定义固定材质通道协议。
-- [ ] UV0 用于基础材质坐标。
-- [ ] UV1 保存距离或世界尺度信息。
-- [ ] UV2 保存速度和流量。
-- [ ] Vertex Color 保存湍流、冲击或随机值。
-- [ ] 在文档中锁定通道语义，后续不随意更改。
+- [x] 按距离重采样，不直接使用不均匀的模拟点作为顶点。
+- [x] 缓存 Position、Tangent、Normal、Velocity 和 Distance。
+- [x] 基于碰撞冲击和方向变化计算简化 Turbulence。
+- [x] 定义固定材质通道协议。
+- [x] UV0 用于基础材质坐标。
+- [x] UV1 保存累计距离和归一化距离。
+- [x] UV2 保存速度（除以 1000）和湍流。
+- [x] Vertex Color 保存湍流、冲击和稳定随机值。
+- [x] 在文档中锁定通道语义，后续不随意更改。
+
+### 阶段 5 材质通道协议
+
+| 通道 | X / R | Y / G | Z / B | W / A |
+| --- | --- | --- | --- | --- |
+| UV0 | Ribbon 横向 0 到 1 | 距离 / Mesh UV Length | - | - |
+| UV1 | 累计距离 | 归一化距离 0 到 1 | - | - |
+| UV2 | 速度 / 1000 | 湍流 0 到 1 | - | - |
+| Vertex Color | 湍流 0 到 1 | 冲击 0 到 1 | 稳定随机值 0 到 1 | 1 |
+
+`FTYWaterfallSample` 是 mesh、材质和后续 Niagara 之间的公共数据协议。随机值由路径种子和距离生成；改变同一 Seed 下的采样间距不会改变相同距离位置的随机结果。
 
 ### 验收标准
 
@@ -790,3 +801,12 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 修改文件：Mesh Component、Mesh Builder、Settings Component、Waterfall Actor、Path Builder 和 Runtime Build.cs。
 - 验证方式：UE 5.8 `UE_MCPTestEditor Win64 Development` 编译通过；编辑器视觉和交互验收待完成。
 - 下一步：验证三角形正反面、UV 连续性、参数变化、清理以及 Undo/Redo，确认后提交阶段 4。
+
+### 2026-09-20 - 阶段 5 / 采样数据和材质通道
+
+- 完成：新增 `FTYWaterfallSample`，由路径组件根据模拟点按距离生成稳定采样缓存。
+- 数据：缓存位置、切线、法线、速度、累计距离、归一化距离、速度大小、碰撞冲击、方向变化湍流和稳定随机值。
+- 网格：Per-Path Ribbon 改为消费采样缓存，并写入 UV0、UV1、UV2 和 Vertex Color。
+- 修改文件：`Data/TYWaterfallSample.h`、Path Component、Path Builder、Mesh Builder、Mesh Component。
+- 验证方式：用户已完成编译，并使用 Debug Material 验证距离、速度、湍流、冲击和稳定随机通道正确。
+- 下一步：提交阶段 5，然后进入阶段 6 的 Editor Mode 最小工作流。

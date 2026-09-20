@@ -4,6 +4,7 @@
 
 #include "Actors/TYWaterfallActor.h"
 #include "Components/TYWaterfallMeshComponent.h"
+#include "Components/TYWaterfallPathComponent.h"
 #include "Components/TYWaterfallSettingsComponent.h"
 #include "Components/SplineComponent.h"
 #include "Materials/MaterialInterface.h"
@@ -31,6 +32,13 @@ bool FTYWaterfallMeshBuilder::BuildPerPathMesh()
 		"TYWaterfallTools", "GenerateWaterfallMesh", "Generate Waterfall Mesh"));
 	Waterfall->Modify();
 	Waterfall->DynamicMeshComponent->Modify();
+	for (UTYWaterfallPathComponent* Path : Waterfall->GeneratedPaths)
+	{
+		if (IsValid(Path))
+		{
+			Path->BuildResampledSamples(Waterfall->WaterfallSettings->GetMeshSampleSpacing());
+		}
+	}
 
 	const FVector WidthAxis = Waterfall->TopSpline->GetDirectionAtTime(
 		0.5f, ESplineCoordinateSpace::World, true).GetSafeNormal();

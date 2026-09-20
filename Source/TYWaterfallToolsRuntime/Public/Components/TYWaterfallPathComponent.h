@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/SplineComponent.h"
+#include "Data/TYWaterfallSample.h"
 #include "TYWaterfallPathComponent.generated.h"
 
 class ATYWaterfallActor;
@@ -70,6 +71,11 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Waterfall|Simulation")
 	bool HasCompletedSimulation() const { return bSimulationComplete; }
+
+	/** Rebuilds the stable distance-based sample cache used by mesh and FX systems. */
+	bool BuildResampledSamples(float SampleSpacing);
+	const TArray<FTYWaterfallSample>& GetResampledSamples() const { return ResampledSamples; }
+	void SetSampleSeed(int32 InSeed) { SampleSeed = InSeed; }
 #endif
 
 protected:
@@ -100,6 +106,13 @@ protected:
 #if WITH_EDITORONLY_DATA
 	UPROPERTY(VisibleAnywhere, Category = "Simulation")
 	TArray<FTYWaterfallSimPoint> SimulatedPoints;
+
+	/** Derived data rebuilt when the requested sample spacing changes. */
+	UPROPERTY(Transient)
+	TArray<FTYWaterfallSample> ResampledSamples;
+
+	UPROPERTY(Transient)
+	int32 SampleSeed = 0;
 
 	UPROPERTY(VisibleAnywhere, Category = "Simulation")
 	bool bSimulationComplete = false;

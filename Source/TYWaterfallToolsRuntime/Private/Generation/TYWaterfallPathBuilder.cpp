@@ -89,6 +89,8 @@ bool FTYWaterfallPathBuilder::CreatePaths()
 			Waterfall->WaterfallSettings->GetFixedDeltaTime(),
 			Waterfall->WaterfallSettings->GetMaxSteps(),
 			Waterfall->WaterfallSettings->GetTerminationHeight());
+		Path->SetSampleSeed(HashCombineFast(
+			GetTypeHash(Waterfall->WaterfallSettings->GetSeed()), PathIndex));
 
 		const float Jitter = RandomStream.FRandRange(
 			-Waterfall->WaterfallSettings->GetSpawnJitterDegrees(),

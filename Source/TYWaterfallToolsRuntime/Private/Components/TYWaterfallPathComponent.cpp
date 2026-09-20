@@ -6,6 +6,16 @@
 #include "Components/SplineComponent.h"
 #include "Engine/World.h"
 
+namespace
+{
+	float StableSampleRandom(int32 Seed, float Distance)
+	{
+		const int32 DistanceKey = FMath::RoundToInt(Distance * 10.0f);
+		FRandomStream RandomStream(HashCombineFast(GetTypeHash(Seed), GetTypeHash(DistanceKey)));
+		return RandomStream.GetFraction();
+	}
+}
+
 UTYWaterfallPathComponent::UTYWaterfallPathComponent()
 {
 	// The actor or a generation builder owns the simulation cadence. The component
@@ -189,6 +199,82 @@ int32 UTYWaterfallPathComponent::AdvanceSimulation(int32 StepBudget)
 	return StepsUsed;
 }
 
+bool UTYWaterfallPathComponent::BuildResampledSamples(float SampleSpacing)
+{
+	ResampledSamples.Reset();
+	if (SimulatedPoints.Num() < 2)
+	{
+		return false;
+	}
+
+	const float SafeSpacing = FMath::Max(SampleSpacing, 1.0f);
+	TArray<float> SourceDistances;
+	SourceDistances.SetNumZeroed(SimulatedPoints.Num());
+	for (int32 PointIndex = 1; PointIndex < SimulatedPoints.Num(); ++PointIndex)
+	{
+		SourceDistances[PointIndex] = SourceDistances[PointIndex - 1]
+			+ FVector::Distance(SimulatedPoints[PointIndex - 1].Position,
+				SimulatedPoints[PointIndex].Position);
+	}
+
+	const float TotalDistance = SourceDistances.Last();
+	if (TotalDistance <= KINDA_SMALL_NUMBER)
+	{
+		return false;
+	}
+
+	const int32 SampleCount = FMath::Max(FMath::CeilToInt(TotalDistance / SafeSpacing) + 1, 2);
+	ResampledSamples.Reserve(SampleCount);
+	int32 SourceIndex = 0;
+	for (int32 SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex)
+	{
+		const float Distance = SampleIndex == SampleCount - 1
+			? TotalDistance
+			: FMath::Min(SampleIndex * SafeSpacing, TotalDistance);
+		while (SourceIndex + 1 < SourceDistances.Num()
+			&& SourceDistances[SourceIndex + 1] < Distance)
+		{
+			++SourceIndex;
+		}
+
+		const int32 NextIndex = FMath::Min(SourceIndex + 1, SimulatedPoints.Num() - 1);
+		const float Span = SourceDistances[NextIndex] - SourceDistances[SourceIndex];
+		const float Alpha = Span > KINDA_SMALL_NUMBER
+			? (Distance - SourceDistances[SourceIndex]) / Span
+			: 0.0f;
+		const FTYWaterfallSimPoint& A = SimulatedPoints[SourceIndex];
+		const FTYWaterfallSimPoint& B = SimulatedPoints[NextIndex];
+		const FVector Position = FMath::Lerp(A.Position, B.Position, Alpha);
+		const FVector Velocity = FMath::Lerp(A.Velocity, B.Velocity, Alpha);
+		const FVector Tangent = (NextIndex != SourceIndex
+			? (B.Position - A.Position)
+			: A.Velocity).GetSafeNormal();
+		const FVector Normal = FMath::Lerp(A.HitNormal, B.HitNormal, Alpha).GetSafeNormal();
+		const float Speed = Velocity.Size();
+		const float Impact = (A.State == ETYWaterfallPointState::Sliding
+			|| B.State == ETYWaterfallPointState::Sliding) ? 1.0f : 0.0f;
+		const float DirectionChange = SourceIndex > 0
+			? FVector::CrossProduct(
+				(SimulatedPoints[SourceIndex].Position - SimulatedPoints[SourceIndex - 1].Position).GetSafeNormal(),
+				Tangent).Size()
+			: 0.0f;
+
+		FTYWaterfallSample& Sample = ResampledSamples.AddDefaulted_GetRef();
+		Sample.Position = Position;
+		Sample.Tangent = Tangent.IsNearlyZero() ? FVector::ForwardVector : Tangent;
+		Sample.Normal = Normal.IsNearlyZero() ? FVector::UpVector : Normal;
+		Sample.Velocity = Velocity;
+		Sample.Distance = Distance;
+		Sample.NormalizedDistance = Distance / TotalDistance;
+		Sample.Speed = Speed;
+		Sample.Impact = Impact;
+		Sample.Turbulence = FMath::Clamp(FMath::Max(DirectionChange, Impact), 0.0f, 1.0f);
+		Sample.RandomValue = StableSampleRandom(SampleSeed, Distance);
+	}
+
+	return ResampledSamples.Num() >= 2;
+}
+
 void UTYWaterfallPathComponent::ClearPreviewPath()
 {
 	Modify();
@@ -197,6 +283,7 @@ void UTYWaterfallPathComponent::ClearPreviewPath()
 	bSimulationInitialized = false;
 	StepsCompleted = 0;
 	CurrentPoint = FTYWaterfallSimPoint();
+	ResampledSamples.Reset();
 	ClearSplinePoints(false);
 	UpdateSpline();
 }
