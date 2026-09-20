@@ -3,6 +3,7 @@
 #include "Actors/TYWaterfallActor.h"
 
 #include "Components/TYWaterfallPathComponent.h"
+#include "Components/TYWaterfallSettingsComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/SplineComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -12,9 +13,16 @@
 #include "Engine/StaticMesh.h"
 #endif
 
+#if WITH_EDITOR
+#include "ScopedTransaction.h"
+#endif
+
 ATYWaterfallActor::ATYWaterfallActor()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	// Tick is available for editor-time generation but remains disabled until a
+	// builder has work. This keeps placed waterfalls free of idle tick cost.
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 
 	RootComp = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	SetRootComponent(RootComp);
@@ -38,13 +46,8 @@ ATYWaterfallActor::ATYWaterfallActor()
 	BakedMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 #if WITH_EDITORONLY_DATA
-	PreviewPath = CreateEditorOnlyDefaultSubobject<UTYWaterfallPathComponent>(TEXT("PreviewPath"));
-	if (PreviewPath)
-	{
-		PreviewPath->SetupAttachment(RootComp);
-		PreviewPath->SetVisibility(true);
-		PreviewPath->SetHiddenInGame(true);
-	}
+	WaterfallSettings = CreateEditorOnlyDefaultSubobject<UTYWaterfallSettingsComponent>(
+		TEXT("WaterfallSettings"));
 #endif
 
 #if WITH_EDITORONLY_DATA
@@ -66,22 +69,46 @@ ATYWaterfallActor::ATYWaterfallActor()
 		KillPlaneComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
 #endif
+
+#if WITH_EDITOR
+	PathBuilder.Initialize(this);
+#endif
+}
+
+void ATYWaterfallActor::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+#if WITH_EDITOR
+	if (PathBuilder.IsGenerating())
+	{
+		PathBuilder.TickGeneration();
+	}
+#endif
 }
 
 #if WITH_EDITOR
-void ATYWaterfallActor::GeneratePreviewPath()
+void ATYWaterfallActor::GeneratePaths()
 {
-	if (PreviewPath)
-	{
-		PreviewPath->GeneratePreviewPath();
-	}
+	PathBuilder.StartGeneration();
 }
 
-void ATYWaterfallActor::ClearPreviewPath()
+void ATYWaterfallActor::CancelPathGeneration()
 {
-	if (PreviewPath)
+	PathBuilder.CancelGeneration();
+}
+
+void ATYWaterfallActor::ClearGeneratedPaths()
+{
+	if (PathBuilder.IsGenerating())
 	{
-		PreviewPath->ClearPreviewPath();
+		PathBuilder.CancelGeneration();
+		return;
 	}
+
+	const FScopedTransaction Transaction(NSLOCTEXT(
+		"TYWaterfallTools", "ClearWaterfallPaths", "Clear Waterfall Paths"));
+	Modify();
+	PathBuilder.ClearGeneratedPaths();
 }
 #endif

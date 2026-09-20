@@ -22,5 +22,10 @@ public class TYWaterfallToolsRuntime : ModuleRules
 				"Engine"
 			}
 		);
+
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("UnrealEd");
+		}
 	}
 }

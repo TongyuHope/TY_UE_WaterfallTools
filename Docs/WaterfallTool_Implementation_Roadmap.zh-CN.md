@@ -292,17 +292,17 @@ struct FTYWaterfallSimPoint
 
 ### 实施步骤
 
-- [ ] 创建 `UTYWaterfallPathComponent : USplineComponent`。
-- [ ] 禁用 Path Component 自身 Tick。
-- [ ] 添加模拟点数组。
-- [ ] 从 Top Spline 中点取得位置和方向。
-- [ ] 实现初速度、重力和线性阻力。
-- [ ] 使用固定时间步长，保证结果可复现。
-- [ ] 使用 Sweep/Line Trace 检查场景碰撞。
-- [ ] 碰撞后将速度投影到碰撞平面，实现基础滑动。
-- [ ] 到达终止高度或最大步数时结束。
-- [ ] 将模拟点写入 Spline Points。
-- [ ] 实现 Clear Path。
+- [x] 创建 `UTYWaterfallPathComponent : USplineComponent`。
+- [x] 禁用 Path Component 自身 Tick。
+- [x] 添加模拟点数组。
+- [x] 从 Top Spline 中点取得位置和方向。
+- [x] 实现初速度、重力和线性阻力。
+- [x] 使用固定时间步长，保证结果可复现。
+- [x] 使用 Sweep/Line Trace 检查场景碰撞。
+- [x] 碰撞后将速度投影到碰撞平面，实现基础滑动。
+- [x] 到达终止高度或最大步数时结束。
+- [x] 将模拟点写入 Spline Points。
+- [x] 实现 Clear Path。
 
 ### 算法基线
 
@@ -333,17 +333,17 @@ Trace(Position, NextPosition)
 
 ### 实施步骤
 
-- [ ] 创建 `UTYWaterfallSettingsComponent`。
-- [ ] 添加 `NumPaths`、`InitialSpeed`、`Gravity`、`Drag`、`FixedDeltaTime`、`MaxSteps`。
-- [ ] 添加 Seed 和 `FRandomStream`，禁止核心生成使用全局 `FMath::Rand`。
-- [ ] 创建 `FTYWaterfallPathBuilder`。
-- [ ] 将任务状态定义为 Idle、Generating、Cancelling、Completed、Failed。
-- [ ] 按 Top Spline 参数均匀创建多个 Path Component。
-- [ ] 每帧限制模拟预算，避免冻结编辑器。
-- [ ] 添加取消操作。
-- [ ] 添加 Undo/Redo 的 `FScopedTransaction`。
-- [ ] 完成生成后调用 `Modify()`、`MarkPackageDirty()`。
-- [ ] 删除路径时同步清理动态网格和 FX。
+- [x] 创建 `UTYWaterfallSettingsComponent`。
+- [x] 添加 `NumPaths`、`InitialSpeed`、`Gravity`、`Drag`、`FixedDeltaTime`、`MaxSteps`。
+- [x] 添加 Seed 和 `FRandomStream`，禁止核心生成使用全局 `FMath::Rand`。
+- [x] 创建 `FTYWaterfallPathBuilder`。
+- [x] 将任务状态定义为 Idle、Generating、Cancelling、Completed、Failed。
+- [x] 按 Top Spline 参数均匀创建多个 Path Component。
+- [x] 每帧限制模拟预算，避免冻结编辑器。
+- [x] 添加取消操作。
+- [x] 添加 Undo/Redo 的 `FScopedTransaction`。
+- [x] 完成生成后调用 `Modify()`、`MarkPackageDirty()`。
+- [x] 删除路径时同步清理动态网格和 FX（当前尚无网格/FX，后续 Builder 将接入同一清理入口）。
 
 ### 生命周期要求
 
@@ -354,10 +354,10 @@ Trace(Position, NextPosition)
 
 ### 验收标准
 
-- 可以生成 1、8、32 条路径。
-- 生成期间编辑器视口仍可响应。
-- Cancel 后不会留下半注册组件。
-- Undo 可以撤销生成，Redo 可以恢复或重新执行预期状态。
+- [x] 可以生成 1、8、32 条路径。
+- [x] 生成期间编辑器视口仍可响应。
+- [x] Cancel 后不会留下半注册组件。
+- [x] Undo 可以撤销生成，Redo 可以恢复或重新执行预期状态。
 
 ## 阶段 4：Per-Path 动态带状网格
 
@@ -770,6 +770,15 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 
 - 完成：新增 `UTYWaterfallPathComponent`、模拟点状态和 Actor 的生成/清除预览路径操作。
 - 修改文件：`Source/TYWaterfallToolsRuntime/Public/Components/TYWaterfallPathComponent.h`、`Source/TYWaterfallToolsRuntime/Private/Components/TYWaterfallPathComponent.cpp`、Actor 头文件和实现文件。
-- 验证方式：完成静态检查；等待用户在 UE 5.8 中编译，并使用 Actor Details 面板中的 `Generate Preview Path` / `Clear Preview Path` 验证。
-- 遗留问题：当前模拟在编辑器按钮调用期间同步执行，分帧 Builder 安排在阶段 3；终止高度暂时以 Actor Z 为基准。
-- 下一步：确认自由落体、碰撞滑动、固定 Seed/参数可复现和清理路径，然后进入阶段 3。
+- 验证方式：用户已在 UE 5.8 中完成编译，并验证生成、碰撞滑动、参数可复现和路径清理功能。
+- 遗留问题：终止高度暂时以 Actor Z 为基准。
+- 下一步：进入阶段 3 的多路径和分帧任务。
+
+### 2026-09-20 - 阶段 3 / 多路径和分帧任务实现
+
+- 完成：新增共享 Settings Component、明确的生成状态机、确定性多路径创建、每帧共享步数预算、取消和清理入口。
+- 方向约定：Top Spline 定义瀑布宽度，路径使用其 Right Vector 垂直流出；`Reverse Flow Direction` 可翻转流向。
+- 修改文件：Settings Component、Path Builder、Path Component 状态机、Waterfall Actor 和 Runtime Build.cs。
+- 验证方式：UE 5.8 Development Editor 编译通过；用户已完成多路径、分帧生成、取消、清理、Undo/Redo 和垂直流向验证。
+- 遗留问题：动态网格和 FX 尚未实现，因此清理操作当前只处理路径组件。
+- 下一步：通过阶段 3 验收后进入 Per-Path 动态带状网格。

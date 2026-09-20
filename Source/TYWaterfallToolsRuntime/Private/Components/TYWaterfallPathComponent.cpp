@@ -22,6 +22,25 @@ ATYWaterfallActor* UTYWaterfallPathComponent::GetWaterfallOwner() const
 
 bool UTYWaterfallPathComponent::GeneratePreviewPath()
 {
+	if (!InitializeSimulation(0.5f))
+	{
+		return false;
+	}
+
+	// This compatibility entry point intentionally runs synchronously. The
+	// multi-path builder uses AdvanceSimulation directly with a frame budget.
+	while (!bSimulationComplete)
+	{
+		AdvanceSimulation(MaxSteps);
+	}
+	return bSimulationComplete;
+}
+
+bool UTYWaterfallPathComponent::InitializeSimulation(
+	float SplineTime,
+	float DirectionJitterDegrees,
+	bool bReverseFlowDirection)
+{
 	ATYWaterfallActor* Waterfall = GetWaterfallOwner();
 	if (!IsValid(Waterfall) || !IsValid(Waterfall->GetTopSpline()))
 	{
@@ -39,30 +58,81 @@ bool UTYWaterfallPathComponent::GeneratePreviewPath()
 
 	USplineComponent* TopSpline = Waterfall->GetTopSpline();
 	const FVector StartPosition = TopSpline->GetLocationAtTime(
-		0.5f, ESplineCoordinateSpace::World, true);
-	const FVector StartDirection = TopSpline->GetDirectionAtTime(
-		0.5f, ESplineCoordinateSpace::World, true).GetSafeNormal();
+		SplineTime, ESplineCoordinateSpace::World, true);
+	const FVector UpDirection = TopSpline->GetUpVectorAtTime(
+		SplineTime, ESplineCoordinateSpace::World, true).GetSafeNormal();
+	// The top spline describes the waterfall's width. Water must leave the
+	// cliff perpendicular to that width, producing a T-shaped top/path layout.
+	// The right vector supplies that perpendicular direction while preserving
+	// the spline's authored up vector and rotation.
+	FVector StartDirection = TopSpline->GetRightVectorAtTime(
+		SplineTime, ESplineCoordinateSpace::World, true)
+		.GetSafeNormal()
+		.RotateAngleAxis(DirectionJitterDegrees, UpDirection);
+	if (bReverseFlowDirection)
+	{
+		StartDirection *= -1.0f;
+	}
 
 	if (StartDirection.IsNearlyZero())
 	{
 		return false;
 	}
 
-	const float Step = FMath::Max(FixedDeltaTime, KINDA_SMALL_NUMBER);
-	const int32 StepLimit = FMath::Max(MaxSteps, 1);
-	const float DragFactor = 1.0f - FMath::Clamp(Drag * Step, 0.0f, 1.0f);
-	const float WorldTerminationHeight = Waterfall->GetActorLocation().Z + TerminationHeight;
-
-	FTYWaterfallSimPoint CurrentPoint;
 	CurrentPoint.Position = StartPosition;
 	CurrentPoint.Velocity = StartDirection * FMath::Max(InitialSpeed, 0.0f);
 	CurrentPoint.State = ETYWaterfallPointState::Start;
 	SimulatedPoints.Add(CurrentPoint);
+	StepsCompleted = 0;
+	WorldTerminationHeight = Waterfall->GetActorLocation().Z + TerminationHeight;
+	bSimulationInitialized = true;
+	bSimulationComplete = false;
+	WriteSimulationToSpline();
+	return true;
+}
+
+void UTYWaterfallPathComponent::ConfigureSimulation(
+	float InInitialSpeed,
+	FVector InGravity,
+	float InDrag,
+	float InFixedDeltaTime,
+	int32 InMaxSteps,
+	float InTerminationHeight)
+{
+	InitialSpeed = FMath::Max(InInitialSpeed, 0.0f);
+	Gravity = InGravity;
+	Drag = FMath::Clamp(InDrag, 0.0f, 1.0f);
+	FixedDeltaTime = FMath::Max(InFixedDeltaTime, 0.001f);
+	MaxSteps = FMath::Max(InMaxSteps, 1);
+	TerminationHeight = InTerminationHeight;
+}
+
+int32 UTYWaterfallPathComponent::AdvanceSimulation(int32 StepBudget)
+{
+	if (!bSimulationInitialized || bSimulationComplete || StepBudget <= 0)
+	{
+		return 0;
+	}
+
+	ATYWaterfallActor* Waterfall = GetWaterfallOwner();
+	UWorld* World = GetWorld();
+	if (!IsValid(Waterfall) || !IsValid(World))
+	{
+		bSimulationComplete = true;
+		return 0;
+	}
+
+	const float Step = FMath::Max(FixedDeltaTime, KINDA_SMALL_NUMBER);
+	const int32 StepLimit = FMath::Max(MaxSteps, 1);
+	const float DragFactor = 1.0f - FMath::Clamp(Drag * Step, 0.0f, 1.0f);
+	int32 StepsUsed = 0;
 
 	// Each iteration advances exactly one fixed step. A line trace covers the
 	// whole segment, so fast-moving points cannot skip a thin collision surface.
-	for (int32 StepIndex = 0; StepIndex < StepLimit; ++StepIndex)
+	while (StepsUsed < StepBudget && StepsCompleted < StepLimit)
 	{
+		++StepsUsed;
+		++StepsCompleted;
 		const FVector PreviousPosition = CurrentPoint.Position;
 		CurrentPoint.Velocity += Gravity * Step;
 		CurrentPoint.Velocity *= DragFactor;
@@ -101,19 +171,22 @@ bool UTYWaterfallPathComponent::GeneratePreviewPath()
 
 		if (CurrentPoint.State == ETYWaterfallPointState::Stopped
 			|| CurrentPoint.Position.Z <= WorldTerminationHeight
-			|| CurrentPoint.Velocity.IsNearlyZero())
+			|| CurrentPoint.Velocity.IsNearlyZero()
+			|| StepsCompleted >= StepLimit)
 		{
 			SimulatedPoints.Last().State = ETYWaterfallPointState::Terminated;
+			bSimulationComplete = true;
 			break;
 		}
-
 	}
 
-	bSimulationComplete = SimulatedPoints.Num() > 1;
 	WriteSimulationToSpline();
 	MarkRenderStateDirty();
-	MarkPackageDirty();
-	return bSimulationComplete;
+	if (bSimulationComplete)
+	{
+		MarkPackageDirty();
+	}
+	return StepsUsed;
 }
 
 void UTYWaterfallPathComponent::ClearPreviewPath()
@@ -121,6 +194,9 @@ void UTYWaterfallPathComponent::ClearPreviewPath()
 	Modify();
 	SimulatedPoints.Reset();
 	bSimulationComplete = false;
+	bSimulationInitialized = false;
+	StepsCompleted = 0;
+	CurrentPoint = FTYWaterfallSimPoint();
 	ClearSplinePoints(false);
 	UpdateSpline();
 }
@@ -132,7 +208,10 @@ void UTYWaterfallPathComponent::WriteSimulationToSpline()
 	{
 		AddSplinePoint(Point.Position, ESplineCoordinateSpace::World, false);
 	}
-	SetSplinePointType(0, ESplinePointType::Linear, false);
+	if (GetNumberOfSplinePoints() > 0)
+	{
+		SetSplinePointType(0, ESplinePointType::Linear, false);
+	}
 	for (int32 PointIndex = 1; PointIndex < GetNumberOfSplinePoints(); ++PointIndex)
 	{
 		SetSplinePointType(PointIndex, ESplinePointType::CurveClamped, false);

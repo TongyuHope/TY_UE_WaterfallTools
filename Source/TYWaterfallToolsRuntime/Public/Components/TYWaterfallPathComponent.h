@@ -52,6 +52,15 @@ public:
 	UFUNCTION(CallInEditor, Category = "Waterfall|Simulation")
 	bool GeneratePreviewPath();
 
+	/** Prepares this path at a normalized position along the owner's top spline. */
+	bool InitializeSimulation(float SplineTime, float DirectionJitterDegrees = 0.0f,
+		bool bReverseFlowDirection = false);
+	void ConfigureSimulation(float InInitialSpeed, FVector InGravity, float InDrag,
+		float InFixedDeltaTime, int32 InMaxSteps, float InTerminationHeight);
+
+	/** Advances at most StepBudget fixed steps and returns the number consumed. */
+	int32 AdvanceSimulation(int32 StepBudget);
+
 	/** Removes all simulated points and spline points created by GeneratePreviewPath. */
 	UFUNCTION(CallInEditor, Category = "Waterfall|Simulation")
 	void ClearPreviewPath();
@@ -65,27 +74,27 @@ public:
 
 protected:
 	/** Initial speed along the top spline's forward direction, in cm/s. */
-	UPROPERTY(EditAnywhere, Category = "Simulation", meta = (ClampMin = "0.0"))
+	UPROPERTY(VisibleAnywhere, Category = "Simulation")
 	float InitialSpeed = 800.0f;
 
 	/** World-space acceleration applied every fixed simulation step, in cm/s^2. */
-	UPROPERTY(EditAnywhere, Category = "Simulation")
+	UPROPERTY(VisibleAnywhere, Category = "Simulation")
 	FVector Gravity = FVector(0.0f, 0.0f, -980.0f);
 
 	/** Fraction of velocity removed per second. Values are clamped to [0, 1]. */
-	UPROPERTY(EditAnywhere, Category = "Simulation", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(VisibleAnywhere, Category = "Simulation")
 	float Drag = 0.1f;
 
 	/** Fixed time step makes repeated runs with the same inputs deterministic. */
-	UPROPERTY(EditAnywhere, Category = "Simulation", meta = (ClampMin = "0.001", ClampMax = "0.1"))
+	UPROPERTY(VisibleAnywhere, Category = "Simulation")
 	float FixedDeltaTime = 0.016f;
 
 	/** Safety limit that prevents a malformed scene from simulating forever. */
-	UPROPERTY(EditAnywhere, Category = "Simulation", meta = (ClampMin = "1"))
+	UPROPERTY(VisibleAnywhere, Category = "Simulation")
 	int32 MaxSteps = 600;
 
 	/** Simulation ends when the point reaches this world-Z offset from its owner. */
-	UPROPERTY(EditAnywhere, Category = "Simulation")
+	UPROPERTY(VisibleAnywhere, Category = "Simulation")
 	float TerminationHeight = -1000.0f;
 
 #if WITH_EDITORONLY_DATA
@@ -94,6 +103,18 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Simulation")
 	bool bSimulationComplete = false;
+
+	UPROPERTY(Transient)
+	FTYWaterfallSimPoint CurrentPoint;
+
+	UPROPERTY(Transient)
+	int32 StepsCompleted = 0;
+
+	UPROPERTY(Transient)
+	float WorldTerminationHeight = 0.0f;
+
+	UPROPERTY(Transient)
+	bool bSimulationInitialized = false;
 #endif
 
 private:
