@@ -91,6 +91,11 @@ bool FTYWaterfallPathBuilder::CreatePaths()
 			Waterfall->WaterfallSettings->GetTerminationHeight());
 		Path->SetSampleSeed(HashCombineFast(
 			GetTypeHash(Waterfall->WaterfallSettings->GetSeed()), PathIndex));
+		// Golden-ratio hue stepping keeps adjacent paths visually distinct while
+		// remaining deterministic when the same number of paths is regenerated.
+		const uint8 PathHue = static_cast<uint8>((PathIndex * 137) % 255);
+		Path->SetPathDebugColor(FLinearColor::MakeFromHSV8(PathHue, 190, 255));
+		Path->SetDrawDebug(Waterfall->WaterfallSettings->ShouldShowPathDebug());
 
 		const float Jitter = RandomStream.FRandRange(
 			-Waterfall->WaterfallSettings->GetSpawnJitterDegrees(),

@@ -76,6 +76,7 @@ public:
 	bool BuildResampledSamples(float SampleSpacing);
 	const TArray<FTYWaterfallSample>& GetResampledSamples() const { return ResampledSamples; }
 	void SetSampleSeed(int32 InSeed) { SampleSeed = InSeed; }
+	void SetPathDebugColor(const FLinearColor& InColor);
 #endif
 
 protected:

@@ -51,6 +51,9 @@ bool FTYWaterfallMeshBuilder::BuildPerPathMesh()
 
 	if (bBuilt)
 	{
+		Waterfall->DynamicMeshComponent->SetEnableWireframeRenderPass(
+			Waterfall->WaterfallSettings->ShouldShowMeshWireframe());
+		Waterfall->DynamicMeshComponent->MarkRenderStateDirty();
 		Waterfall->DynamicMeshComponent->SetMaterial(
 			0, Waterfall->WaterfallSettings->GetWaterfallMaterial());
 		Waterfall->MarkPackageDirty();

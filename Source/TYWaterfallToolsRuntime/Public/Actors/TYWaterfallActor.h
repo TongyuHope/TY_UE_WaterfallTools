@@ -69,6 +69,9 @@ public:
 #if WITH_EDITOR
 	UFUNCTION(BlueprintPure, Category = "Waterfall|Components")
 	UStaticMeshComponent* GetKillPlaneComponent() const { return KillPlaneComponent; }
+
+	UTYWaterfallSettingsComponent* GetWaterfallSettings() const { return WaterfallSettings; }
+	void SetPathDebugVisible(bool bVisible);
 #endif
 
 protected:

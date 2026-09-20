@@ -4,6 +4,7 @@
 #include "TYWaterfallToolsEditorMode.h"
 
 #include "Actors/TYWaterfallActor.h"
+#include "Components/TYWaterfallSettingsComponent.h"
 #include "IDetailsView.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
@@ -22,6 +23,9 @@ FTYWaterfallToolsEditorModeToolkit::FTYWaterfallToolsEditorModeToolkit()
 void FTYWaterfallToolsEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& InitToolkitHost, TWeakObjectPtr<UEdMode> InOwningMode)
 {
 	FModeToolkit::Init(InitToolkitHost, InOwningMode);
+	ModeDetailsView->SetIsPropertyEditingEnabledDelegate(
+		FIsPropertyEditingEnabled::CreateSP(
+			this, &FTYWaterfallToolsEditorModeToolkit::CanEditSettings));
 
 	ToolkitWidget = SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
@@ -131,7 +135,11 @@ void FTYWaterfallToolsEditorModeToolkit::SetSelectedWaterfall(ATYWaterfallActor*
 	SelectedWaterfall = InWaterfall;
 	if (ModeDetailsView.IsValid())
 	{
-		ModeDetailsView->SetObject(InWaterfall);
+		// The authoring panel intentionally exposes only waterfall settings. Showing
+		// the whole actor duplicates Transform, Rendering, Collision and networking
+		// categories that belong in the editor's standard Details panel.
+		ModeDetailsView->SetObject(
+			InWaterfall ? InWaterfall->GetWaterfallSettings() : nullptr);
 	}
 }
 
@@ -180,6 +188,11 @@ bool FTYWaterfallToolsEditorModeToolkit::CanCancelGeneration() const
 {
 	const ATYWaterfallActor* Waterfall = SelectedWaterfall.Get();
 	return Waterfall && Waterfall->IsGeneratingPaths();
+}
+
+bool FTYWaterfallToolsEditorModeToolkit::CanEditSettings() const
+{
+	return CanRunGenerationCommand();
 }
 
 FReply FTYWaterfallToolsEditorModeToolkit::OnGeneratePathsClicked()

@@ -199,6 +199,12 @@ int32 UTYWaterfallPathComponent::AdvanceSimulation(int32 StepBudget)
 	return StepsUsed;
 }
 
+void UTYWaterfallPathComponent::SetPathDebugColor(const FLinearColor& InColor)
+{
+	SetUnselectedSplineSegmentColor(InColor);
+	SetSelectedSplineSegmentColor(InColor.Desaturate(0.2f));
+}
+
 bool UTYWaterfallPathComponent::BuildResampledSamples(float SampleSpacing)
 {
 	ResampledSamples.Reset();

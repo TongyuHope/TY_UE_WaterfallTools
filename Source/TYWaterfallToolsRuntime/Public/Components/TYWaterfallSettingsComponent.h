@@ -17,6 +17,10 @@ class TYWATERFALLTOOLSRUNTIME_API UTYWaterfallSettingsComponent : public UActorC
 public:
 	UTYWaterfallSettingsComponent();
 
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+
 	int32 GetNumPaths() const { return FMath::Max(NumPaths, 1); }
 	int32 GetSeed() const { return Seed; }
 	FVector2D GetSpawnRange() const;
@@ -33,6 +37,8 @@ public:
 	float GetMeshSampleSpacing() const { return FMath::Max(MeshSampleSpacing, 1.0f); }
 	float GetMeshUVLength() const { return FMath::Max(MeshUVLength, 1.0f); }
 	UMaterialInterface* GetWaterfallMaterial() const { return WaterfallMaterial; }
+	bool ShouldShowPathDebug() const { return bShowPathDebug; }
+	bool ShouldShowMeshWireframe() const { return bShowMeshWireframe; }
 
 protected:
 	/** Number of paths distributed across the selected part of the top spline. */
@@ -68,14 +74,14 @@ protected:
 	float FixedDeltaTime = 0.016f;
 
 	UPROPERTY(EditAnywhere, Category = "Simulation", meta = (ClampMin = "1"))
-	int32 MaxSteps = 600;
+	int32 MaxSteps = 80;
 
 	UPROPERTY(EditAnywhere, Category = "Simulation")
 	float TerminationHeight = -1000.0f;
 
 	/** Total width of every generated ribbon, measured in Unreal units. */
 	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
-	float RibbonWidth = 100.0f;
+	float RibbonWidth = 50.0f;
 
 	/** Target distance between adjacent ribbon rows. Smaller values create denser meshes. */
 	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
@@ -86,10 +92,18 @@ protected:
 	float MeshUVLength = 200.0f;
 
 	/** Optional material assigned to slot 0 after the ribbons are generated. */
-	UPROPERTY(EditAnywhere, Category = "Mesh")
+	UPROPERTY(EditAnywhere, Category = "Material")
 	TObjectPtr<UMaterialInterface> WaterfallMaterial;
 
 	/** Total simulation steps processed across all paths during one editor frame. */
 	UPROPERTY(EditAnywhere, Category = "Performance", meta = (ClampMin = "1", ClampMax = "10000"))
 	int32 SimulationStepsPerFrame = 256;
+
+	/** Show each generated path as a spline with its own stable debug color. */
+	UPROPERTY(EditAnywhere, Category = "Debug")
+	bool bShowPathDebug = false;
+
+	/** Draw the generated mesh triangle edges and vertices while authoring. */
+	UPROPERTY(EditAnywhere, Category = "Debug")
+	bool bShowMeshWireframe = false;
 };

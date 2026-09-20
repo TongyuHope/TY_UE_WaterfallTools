@@ -34,8 +34,11 @@ public class TYWaterfallTools : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
+				"ComponentVisualizers",
 				"CoreUObject",
 				"Engine",
+				"GeometryCore",
+				"GeometryFramework",
 				"TYWaterfallToolsRuntime",
 				"Slate",
 				"SlateCore",
@@ -44,6 +47,7 @@ public class TYWaterfallTools : ModuleRules
 				"EditorStyle",
 				"UnrealEd",
 				"LevelEditor",
+				"PropertyEditor",
 				"InteractiveToolsFramework",
 				"EditorInteractiveToolsFramework"
 				// ... add private dependencies that you statically link with here ...	

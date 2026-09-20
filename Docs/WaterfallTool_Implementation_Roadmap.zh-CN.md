@@ -499,14 +499,14 @@ struct FTYWaterfallSample
 
 ### 实施步骤
 
-- [ ] 注册 `ATYWaterfallActor` Details Customization。
-- [ ] 注册 `UTYWaterfallSettingsComponent` Details Customization。
-- [ ] 按 Simulation、Paths、Mesh、Material、FX、Bake 分组。
-- [ ] 根据当前状态显示或隐藏相关参数。
-- [ ] 注册 Path Component Visualizer。
-- [ ] 在视口绘制速度、法线、碰撞点和终止点。
-- [ ] 添加显示顶点和三角形的 Debug 操作。
-- [ ] 在模块 Shutdown 时对称注销全部自定义项。
+- [x] 注册 `ATYWaterfallActor` Details Customization。
+- [x] 注册 `UTYWaterfallSettingsComponent` Details Customization。
+- [x] 已有参数按 Paths、Simulation、Mesh、Material、Performance、Debug 分组；FX、Bake 留到对应阶段。
+- [x] 路径生成期间禁用 Settings 编辑，完成或取消后恢复。
+- [x] 复用 Spline Component 的路径 Debug 渲染，无需额外 Path Visualizer。
+- [x] 每条路径使用稳定且不同的颜色，便于辨认路径分布和交叉。
+- [x] 添加显示 Dynamic Mesh 顶点和三角形线框的 Debug 开关。
+- [x] 在模块 Shutdown 时对称注销全部 Details 和 Visualizer 注册。
 
 ### 验收标准
 
@@ -821,3 +821,16 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 验证方式：用户已完成编译，并验证选择切换、按钮状态、进度、取消、清理以及退出 Mode 生命周期正确。
 - UE 5.8 兼容：`SHorizontalBox` 和 `SVerticalBox` 统一由 `Widgets/SBoxPanel.h` 提供。
 - 下一步：提交阶段 6，然后进入阶段 7 的 Details 定制和路径可视化。
+
+### 2026-09-20 - 阶段 7 / Details 定制和路径可视化
+
+- 面板精简：Editor Mode 只显示 `WaterfallSettings`，不再重复 Actor 的 Transform、Rendering、Collision 和网络参数。
+- Details：隐藏 Settings Component 的通用组件分类，固定瀑布参数分类顺序；隐藏 Actor 的内部组件、生成路径数组和旧 CallInEditor 按钮分类。
+- 状态：路径生成期间 Settings 只读，任务结束或取消后恢复编辑。
+- 路径可视化：参考原插件的 `SetDrawDebug` 方案，复用 Spline Debug 渲染；每条路径根据索引获得稳定且不同的 HSV 颜色，不常驻绘制速度、法线或状态点。
+- 网格可视化：`Show Mesh Wireframe` 显示 Dynamic Mesh 三角形线框和绿色顶点。
+- 生命周期：Details Customization 和 Mesh Component Visualizer 均在 Editor 模块 Startup 注册、Shutdown 对称注销。
+- 修改文件：Runtime Actor、Settings、Path、Mesh Builder；Editor Toolkit、Module、Build.cs、Details 和 Visualizers。
+- 默认值调整：根据实际验证将 Max Steps 设为 80、Ribbon Width 设为 50，并默认关闭 Path Debug。
+- 验证方式：用户已完成编译，并验证精简面板、生成期间只读、彩色路径 Debug 和网格线框功能正确。
+- 下一步：提交阶段 7，然后进入阶段 8 的扩展网格模式。

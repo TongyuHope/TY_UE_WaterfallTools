@@ -130,4 +130,16 @@ void ATYWaterfallActor::ClearDynamicMesh()
 	Modify();
 	MeshBuilder.ClearMesh();
 }
+
+void ATYWaterfallActor::SetPathDebugVisible(bool bVisible)
+{
+	for (UTYWaterfallPathComponent* Path : GeneratedPaths)
+	{
+		if (IsValid(Path))
+		{
+			Path->SetDrawDebug(bVisible);
+			Path->MarkRenderStateDirty();
+		}
+	}
+}
 #endif

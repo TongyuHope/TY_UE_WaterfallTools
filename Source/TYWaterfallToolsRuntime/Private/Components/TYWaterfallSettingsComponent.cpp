@@ -2,6 +2,9 @@
 
 #include "Components/TYWaterfallSettingsComponent.h"
 
+#include "Actors/TYWaterfallActor.h"
+#include "Components/TYWaterfallMeshComponent.h"
+
 UTYWaterfallSettingsComponent::UTYWaterfallSettingsComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
@@ -15,3 +18,33 @@ FVector2D UTYWaterfallSettingsComponent::GetSpawnRange() const
 		FMath::Clamp(FMath::Min(SpawnRange.X, SpawnRange.Y), 0.0f, 1.0f),
 		FMath::Clamp(FMath::Max(SpawnRange.X, SpawnRange.Y), 0.0f, 1.0f));
 }
+
+#if WITH_EDITOR
+void UTYWaterfallSettingsComponent::PostEditChangeProperty(
+	FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+
+	if (PropertyChangedEvent.GetPropertyName()
+		== GET_MEMBER_NAME_CHECKED(UTYWaterfallSettingsComponent, bShowPathDebug))
+	{
+		if (ATYWaterfallActor* Waterfall = GetOwner<ATYWaterfallActor>())
+		{
+			Waterfall->SetPathDebugVisible(bShowPathDebug);
+		}
+	}
+
+	if (PropertyChangedEvent.GetPropertyName()
+		== GET_MEMBER_NAME_CHECKED(UTYWaterfallSettingsComponent, bShowMeshWireframe))
+	{
+		if (const ATYWaterfallActor* Waterfall = GetOwner<ATYWaterfallActor>())
+		{
+			if (UTYWaterfallMeshComponent* Mesh = Waterfall->GetDynamicMeshComponent())
+			{
+				Mesh->SetEnableWireframeRenderPass(bShowMeshWireframe);
+				Mesh->MarkRenderStateDirty();
+			}
+		}
+	}
+}
+#endif

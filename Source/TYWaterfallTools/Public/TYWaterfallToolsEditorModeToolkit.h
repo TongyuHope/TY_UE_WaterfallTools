@@ -31,6 +31,7 @@ private:
 	TOptional<float> GetGenerationProgress() const;
 	bool CanRunGenerationCommand() const;
 	bool CanCancelGeneration() const;
+	bool CanEditSettings() const;
 	FReply OnGeneratePathsClicked();
 	FReply OnGenerateMeshClicked();
 	FReply OnClearClicked();
