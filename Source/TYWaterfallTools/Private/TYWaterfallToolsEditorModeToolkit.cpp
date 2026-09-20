@@ -67,13 +67,23 @@ void FTYWaterfallToolsEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& In
 			]
 			+ SHorizontalBox::Slot()
 			.FillWidth(1.0f)
-			.Padding(4.0f, 0.0f, 0.0f, 0.0f)
+			.Padding(4.0f, 0.0f)
 			[
 				SNew(SButton)
 				.Text(LOCTEXT("GenerateMesh", "Generate Mesh"))
 				.ToolTipText(LOCTEXT("GenerateMeshTooltip", "Build Per Path, Cross and Splash geometry from the generated paths."))
 				.IsEnabled(this, &FTYWaterfallToolsEditorModeToolkit::CanRunGenerationCommand)
 				.OnClicked(this, &FTYWaterfallToolsEditorModeToolkit::OnGenerateMeshClicked)
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.Padding(4.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("RefreshNiagara", "Refresh FX"))
+				.ToolTipText(LOCTEXT("RefreshNiagaraTooltip", "Refresh Top, Middle and Bottom Niagara data from the generated paths."))
+				.IsEnabled(this, &FTYWaterfallToolsEditorModeToolkit::CanRunGenerationCommand)
+				.OnClicked(this, &FTYWaterfallToolsEditorModeToolkit::OnRefreshNiagaraClicked)
 			]
 		]
 		+ SVerticalBox::Slot()
@@ -87,7 +97,7 @@ void FTYWaterfallToolsEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& In
 			[
 				SNew(SButton)
 				.Text(LOCTEXT("ClearAll", "Clear All"))
-				.ToolTipText(LOCTEXT("ClearAllTooltip", "Remove generated paths and their derived mesh."))
+				.ToolTipText(LOCTEXT("ClearAllTooltip", "Remove generated paths, mesh and Niagara point data."))
 				.IsEnabled(this, &FTYWaterfallToolsEditorModeToolkit::CanRunGenerationCommand)
 				.OnClicked(this, &FTYWaterfallToolsEditorModeToolkit::OnClearClicked)
 			]
@@ -209,6 +219,15 @@ FReply FTYWaterfallToolsEditorModeToolkit::OnGenerateMeshClicked()
 	if (ATYWaterfallActor* Waterfall = SelectedWaterfall.Get())
 	{
 		Waterfall->GenerateMesh();
+	}
+	return FReply::Handled();
+}
+
+FReply FTYWaterfallToolsEditorModeToolkit::OnRefreshNiagaraClicked()
+{
+	if (ATYWaterfallActor* Waterfall = SelectedWaterfall.Get())
+	{
+		Waterfall->RefreshNiagaraEffects();
 	}
 	return FReply::Handled();
 }

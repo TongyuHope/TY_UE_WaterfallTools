@@ -178,6 +178,7 @@ void FTYWaterfallPathBuilder::ClearGeneratedPaths()
 		Waterfall->DynamicMeshComponent->Modify();
 		Waterfall->DynamicMeshComponent->ClearWaterfallMesh();
 	}
+	Waterfall->ClearNiagaraEffects();
 
 	for (UTYWaterfallPathComponent* Path : Waterfall->GeneratedPaths)
 	{
@@ -201,6 +202,7 @@ void FTYWaterfallPathBuilder::FinishGeneration(ETYWaterfallGenerationState Resul
 		Waterfall->SetActorTickEnabled(false);
 		if (ResultState == ETYWaterfallGenerationState::Completed)
 		{
+			Waterfall->RefreshNiagaraEffects();
 			Waterfall->MarkPackageDirty();
 		}
 	}

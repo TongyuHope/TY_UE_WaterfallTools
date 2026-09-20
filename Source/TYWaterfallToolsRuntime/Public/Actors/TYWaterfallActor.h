@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Data/TYWaterfallFXPointData.h"
 #include "GameFramework/Actor.h"
 #include "Generation/TYWaterfallMeshBuilder.h"
 #include "Generation/TYWaterfallPathBuilder.h"
@@ -14,6 +15,7 @@ class UStaticMeshComponent;
 class UTYWaterfallMeshComponent;
 class UTYWaterfallPathComponent;
 class UTYWaterfallSettingsComponent;
+class UTYWaterfallVFXComponent;
 
 /** Base actor that owns the editable waterfall authoring components. */
 UCLASS(Blueprintable, meta = (DisplayName = "TY Waterfall"))
@@ -37,6 +39,15 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Waterfall|Components")
 	UTYWaterfallMeshComponent* GetDynamicMeshComponent() const { return DynamicMeshComponent; }
+
+	UFUNCTION(BlueprintPure, Category = "Waterfall|Components")
+	UTYWaterfallVFXComponent* GetTopVFXComponent() const { return TopVFXComponent; }
+
+	UFUNCTION(BlueprintPure, Category = "Waterfall|Components")
+	UTYWaterfallVFXComponent* GetMiddleVFXComponent() const { return MiddleVFXComponent; }
+
+	UFUNCTION(BlueprintPure, Category = "Waterfall|Components")
+	UTYWaterfallVFXComponent* GetBottomVFXComponent() const { return BottomVFXComponent; }
 
 #if WITH_EDITOR
 	/** Creates and starts frame-budgeted generation of all configured paths. */
@@ -69,6 +80,18 @@ public:
 	/** Removes the generated dynamic mesh without deleting the source paths. */
 	UFUNCTION(CallInEditor, Category = "Waterfall|Mesh")
 	void ClearDynamicMesh();
+
+	/** Rebuilds Top, Middle and Bottom Niagara point arrays from generated paths. */
+	UFUNCTION(CallInEditor, Category = "Waterfall|FX")
+	void RefreshNiagaraEffects();
+
+	/** Clears Niagara point arrays and deactivates all three systems. */
+	UFUNCTION(CallInEditor, Category = "Waterfall|FX")
+	void ClearNiagaraEffects();
+
+	TArray<FTYWaterfallFXPointData> GetTopFXPointData() const;
+	TArray<FTYWaterfallFXPointData> GetMiddleFXPointData() const;
+	TArray<FTYWaterfallFXPointData> GetBottomFXPointData() const;
 #endif
 
 #if WITH_EDITOR
@@ -95,6 +118,15 @@ protected:
 	/** Runtime-visible preview mesh; stage 7 will bake this into BakedMeshComponent. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UTYWaterfallMeshComponent> DynamicMeshComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UTYWaterfallVFXComponent> TopVFXComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UTYWaterfallVFXComponent> MiddleVFXComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UTYWaterfallVFXComponent> BottomVFXComponent;
 
 #if WITH_EDITORONLY_DATA
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))

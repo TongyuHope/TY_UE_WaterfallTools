@@ -34,6 +34,7 @@ private:
 	bool CanEditSettings() const;
 	FReply OnGeneratePathsClicked();
 	FReply OnGenerateMeshClicked();
+	FReply OnRefreshNiagaraClicked();
 	FReply OnClearClicked();
 	FReply OnCancelClicked();
 

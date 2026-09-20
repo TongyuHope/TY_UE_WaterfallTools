@@ -12,7 +12,8 @@ public class TYWaterfallToolsRuntime : ModuleRules
 			new string[]
 			{
 				"Core",
-				"GeometryFramework"
+				"GeometryFramework",
+				"Niagara"
 			}
 		);
 

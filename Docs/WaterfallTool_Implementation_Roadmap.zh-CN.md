@@ -559,22 +559,41 @@ struct FTYWaterfallSample
 - Splash 正面朝向终点采样法线，参数变化不会产生越界或退化索引。
 - Singular 保持不可选，直至未来阶段完成跨路径兼容性处理。
 
-## 阶段 9：Niagara 和 Audio
+## 阶段 9：Niagara
 
 ### 目标
 
-基于路径数据布置顶部、中段和底部效果。
+基于路径数据布置顶部、中段和底部 Niagara 效果。Audio 延期到未来阶段。
 
 ### 实施步骤
 
-- [ ] 定义统一的 `FTYWaterfallFXPointData`。
-- [ ] 添加顶部、底部和中段数据查询接口。
-- [ ] 创建 `UTYWaterfallVFXComponent : UNiagaraComponent`。
-- [ ] 通过 Niagara Data Interface 或数组参数传递点数据。
-- [ ] 添加顶部、中段、底部 Audio Component。
-- [ ] 根据路径中点或包围盒确定 Audio 位置。
-- [ ] 路径重新生成后刷新 FX 数据。
-- [ ] 路径清除后清理局部 FX。
+- [x] 定义统一的 `FTYWaterfallFXPointData`。
+- [x] 添加顶部、底部和中段数据查询接口。
+- [x] 创建 `UTYWaterfallVFXComponent : UNiagaraComponent`。
+- [x] 通过 Niagara Array Data Interface 传递点数据。
+- [x] Actor 持有顶部、中段、底部三个 Niagara Component。
+- [x] 路径生成完成后自动刷新 FX 数据。
+- [x] 路径清除后清空数组并停用 Niagara。
+- [ ] Audio Component 和空间布局（延期）。
+
+### Niagara 用户参数协议
+
+三个 Niagara System 使用相同的用户参数；数组相同索引共同描述一个 FX 点：
+
+| 参数 | Niagara 类型 | 语义 |
+| --- | --- | --- |
+| `User.TY_PositionArray` | Vector Array | 组件局部空间位置 |
+| `User.TY_ForwardArray` | Vector Array | 局部空间流向 |
+| `User.TY_UpArray` | Vector Array | 局部空间上方向/表面法线 |
+| `User.TY_RightArray` | Vector Array | 局部空间右方向 |
+
+Top 每条路径提供首点，Bottom 每条路径提供末点。Middle 按 Niagara Sample Spacing
+重新采样并排除首尾点，避免与 Top 和 Bottom 重复。三个 Niagara System 由 Settings
+中的软引用配置，生成或点击 Refresh FX 时才同步加载并赋给组件。
+
+位置和方向在写入组件时转换并保存为组件局部空间。Niagara Emitter 需要启用 Local Space，
+再按 Execution Index 从各数组读取相同索引；Spawn Count 可直接读取 Position Array 的长度。
+这样 Actor 移动和旋转后无需重新上传数据。
 
 ### 性能要求
 
@@ -587,6 +606,7 @@ struct FTYWaterfallSample
 - 顶部、底部和中段效果位置正确。
 - Actor 移动和旋转后局部/世界空间转换正确。
 - 清除路径不会留下悬空 FX 组件。
+- 没有指定 Niagara System 时组件保持停用，但点数据仍能正确生成。
 
 ## 阶段 10：静态网格烘焙
 
@@ -752,6 +772,7 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 | ADR-005 | 先完成动态网格，再实现 Static Mesh Bake | 隔离几何错误和资产保存错误 | 已决定 |
 | ADR-006 | 运行时 Actor 默认不 Tick | 生成是编辑器工作流，避免无意义开销 | 已决定 |
 | ADR-007 | 阶段 8 将 Per Path、Cross 和 Splash 组合生成，延期 Singular | 当前无 Advanced 分步界面；Singular 还需要跨路径重采样、排序及异常拓扑处理 | 已决定 |
+| ADR-008 | 阶段 9 只实现 Niagara，Audio 延期 | 先稳定 FX 数据协议和空间转换，避免同时引入声音布局与衰减资产 | 已决定 |
 
 后续遇到会影响多个阶段的架构选择时，在此追加 ADR，而不是只把决定留在聊天记录中。
 
@@ -771,7 +792,7 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 
 ## 11. 下一步
 
-阶段 8 已完成代码实现，当前等待 UE 5.8 编译与编辑器内模式、朝向、材质通道和 Undo/Redo 验收。
+阶段 9 Niagara 已完成代码实现，当前等待 UE 5.8 编译与 Niagara 资产内的数据读取、空间转换和生命周期验收。
 
 ### 2026-09-18 - 阶段 0 / Runtime 模块边界
 
@@ -859,3 +880,16 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 修改文件：Settings Component、Mesh Component、Mesh Builder、Waterfall Actor、Editor Mode Toolkit 和本路线图。
 - 验证方式：已完成静态差异检查；UE 5.8 编译与编辑器视觉验证由用户执行。
 - 下一步：验证组合网格完整性、正面朝向、材质通道、清理、线框 Debug 和 Undo/Redo，通过后提交阶段 8。
+
+### 2026-09-20 - 阶段 9 / Niagara 数据和组件
+
+- 完成：新增统一 FX 点数据，并为 Actor 添加 Top、Middle、Bottom 三个 Niagara Component。
+- 数据：仅向 Niagara 上传局部位置和 Forward/Up/Right 三个正交方向数组。
+- 分组：Top/Bottom 分别取每条路径首尾点；Middle 按 Niagara Sample Spacing 生成内部等距点。
+- 生命周期：路径完成后自动刷新；Refresh FX 可在参数或资产变化后手动刷新；Clear All 和取消会清空数组并停用系统。
+- 空间：组件保存局部空间数据，Actor 移动、旋转以及 PIE 重建 Niagara 实例时无需重算路径。
+- 资产：Settings 使用三个 Niagara System 软引用，明确刷新时才同步加载；插件声明 Niagara 依赖。
+- Audio：根据本阶段范围明确延期，未添加 Audio Component、声音资产或空间衰减参数。
+- 修改文件：FX Point Data、VFX Component、Waterfall Actor、Settings、Path Builder、Runtime Build.cs、uplugin、Editor Toolkit、Details 和本路线图。
+- 验证方式：已完成静态 API 与差异检查；UE 5.8 编译和 Niagara 资产视觉验证由用户执行。
+- 下一步：创建符合用户参数协议的三个 Niagara System，验证自动/手动刷新、Actor 变换、清理、保存重开和 PIE。

@@ -5,9 +5,11 @@
 #include "Components/TYWaterfallMeshComponent.h"
 #include "Components/TYWaterfallPathComponent.h"
 #include "Components/TYWaterfallSettingsComponent.h"
+#include "Components/TYWaterfallVFXComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/SplineComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "NiagaraSystem.h"
 
 #if WITH_EDITORONLY_DATA
 #include "UObject/ConstructorHelpers.h"
@@ -49,6 +51,13 @@ ATYWaterfallActor::ATYWaterfallActor()
 	DynamicMeshComponent = CreateDefaultSubobject<UTYWaterfallMeshComponent>(TEXT("DynamicMesh"));
 	DynamicMeshComponent->SetupAttachment(RootComp);
 	DynamicMeshComponent->SetMobility(EComponentMobility::Movable);
+
+	TopVFXComponent = CreateDefaultSubobject<UTYWaterfallVFXComponent>(TEXT("TopVFX"));
+	TopVFXComponent->SetupAttachment(RootComp);
+	MiddleVFXComponent = CreateDefaultSubobject<UTYWaterfallVFXComponent>(TEXT("MiddleVFX"));
+	MiddleVFXComponent->SetupAttachment(RootComp);
+	BottomVFXComponent = CreateDefaultSubobject<UTYWaterfallVFXComponent>(TEXT("BottomVFX"));
+	BottomVFXComponent->SetupAttachment(RootComp);
 
 #if WITH_EDITORONLY_DATA
 	WaterfallSettings = CreateEditorOnlyDefaultSubobject<UTYWaterfallSettingsComponent>(
@@ -134,6 +143,137 @@ void ATYWaterfallActor::ClearDynamicMesh()
 		"TYWaterfallTools", "ClearWaterfallMesh", "Clear Waterfall Mesh"));
 	Modify();
 	MeshBuilder.ClearMesh();
+}
+
+namespace
+{
+FTYWaterfallFXPointData MakeFXPoint(const FTYWaterfallSample& Sample)
+{
+	FTYWaterfallFXPointData Result;
+	Result.Position = Sample.Position;
+	Result.ForwardDirection = Sample.Tangent.GetSafeNormal();
+
+	// Build an orthonormal frame so Niagara meshes and sprites do not inherit
+	// skew when collision normals are nearly parallel to the flow direction.
+	Result.UpDirection = FVector::VectorPlaneProject(
+		Sample.Normal, Result.ForwardDirection).GetSafeNormal();
+	if (Result.UpDirection.IsNearlyZero())
+	{
+		Result.UpDirection = FVector::VectorPlaneProject(
+			FVector::UpVector, Result.ForwardDirection).GetSafeNormal();
+	}
+	if (Result.UpDirection.IsNearlyZero())
+	{
+		Result.UpDirection = FVector::RightVector;
+	}
+	Result.RightDirection = FVector::CrossProduct(
+		Result.UpDirection, Result.ForwardDirection).GetSafeNormal();
+	Result.UpDirection = FVector::CrossProduct(
+		Result.ForwardDirection, Result.RightDirection).GetSafeNormal();
+	return Result;
+}
+}
+
+TArray<FTYWaterfallFXPointData> ATYWaterfallActor::GetTopFXPointData() const
+{
+	TArray<FTYWaterfallFXPointData> Result;
+	Result.Reserve(GeneratedPaths.Num());
+	for (const UTYWaterfallPathComponent* Path : GeneratedPaths)
+	{
+		if (IsValid(Path) && !Path->GetResampledSamples().IsEmpty())
+		{
+			Result.Add(MakeFXPoint(Path->GetResampledSamples()[0]));
+		}
+	}
+	return Result;
+}
+
+TArray<FTYWaterfallFXPointData> ATYWaterfallActor::GetMiddleFXPointData() const
+{
+	TArray<FTYWaterfallFXPointData> Result;
+	for (const UTYWaterfallPathComponent* Path : GeneratedPaths)
+	{
+		if (!IsValid(Path))
+		{
+			continue;
+		}
+
+		const TArray<FTYWaterfallSample>& Samples = Path->GetResampledSamples();
+		for (int32 SampleIndex = 1; SampleIndex + 1 < Samples.Num(); ++SampleIndex)
+		{
+			Result.Add(MakeFXPoint(Samples[SampleIndex]));
+		}
+	}
+	return Result;
+}
+
+TArray<FTYWaterfallFXPointData> ATYWaterfallActor::GetBottomFXPointData() const
+{
+	TArray<FTYWaterfallFXPointData> Result;
+	Result.Reserve(GeneratedPaths.Num());
+	for (const UTYWaterfallPathComponent* Path : GeneratedPaths)
+	{
+		if (IsValid(Path) && !Path->GetResampledSamples().IsEmpty())
+		{
+			Result.Add(MakeFXPoint(Path->GetResampledSamples().Last()));
+		}
+	}
+	return Result;
+}
+
+void ATYWaterfallActor::RefreshNiagaraEffects()
+{
+	if (!IsValid(WaterfallSettings) || GeneratedPaths.IsEmpty())
+	{
+		ClearNiagaraEffects();
+		return;
+	}
+
+	Modify();
+	for (UTYWaterfallPathComponent* Path : GeneratedPaths)
+	{
+		if (IsValid(Path))
+		{
+			Path->BuildResampledSamples(WaterfallSettings->GetNiagaraSampleSpacing());
+		}
+	}
+
+	const float BoundsPadding = WaterfallSettings->GetNiagaraBoundsPadding();
+	auto ConfigureComponent = [BoundsPadding](
+		UTYWaterfallVFXComponent* Component,
+		const TSoftObjectPtr<UNiagaraSystem>& System,
+		const TArray<FTYWaterfallFXPointData>& Points)
+	{
+		if (!IsValid(Component))
+		{
+			return;
+		}
+		Component->Modify();
+		Component->SetAsset(System.LoadSynchronous());
+		Component->SetPointData(Points, BoundsPadding);
+	};
+
+	ConfigureComponent(TopVFXComponent,
+		WaterfallSettings->GetTopNiagaraSystem(), GetTopFXPointData());
+	ConfigureComponent(MiddleVFXComponent,
+		WaterfallSettings->GetMiddleNiagaraSystem(), GetMiddleFXPointData());
+	ConfigureComponent(BottomVFXComponent,
+		WaterfallSettings->GetBottomNiagaraSystem(), GetBottomFXPointData());
+	MarkPackageDirty();
+}
+
+void ATYWaterfallActor::ClearNiagaraEffects()
+{
+	for (UTYWaterfallVFXComponent* Component : {
+		TopVFXComponent.Get(), MiddleVFXComponent.Get(), BottomVFXComponent.Get() })
+	{
+		if (IsValid(Component))
+		{
+			Component->Modify();
+			Component->ClearPointData();
+		}
+	}
+	MarkPackageDirty();
 }
 
 void ATYWaterfallActor::SetPathDebugVisible(bool bVisible)

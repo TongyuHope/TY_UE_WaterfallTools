@@ -7,6 +7,7 @@
 #include "TYWaterfallSettingsComponent.generated.h"
 
 class UMaterialInterface;
+class UNiagaraSystem;
 
 /** Authoring settings shared by all paths generated for one waterfall actor. */
 UCLASS(ClassGroup = (Waterfall), meta = (DisplayName = "TY Waterfall Settings"))
@@ -42,6 +43,11 @@ public:
 	int32 GetSplashRadialSegments() const { return FMath::Clamp(SplashRadialSegments, 3, 128); }
 	int32 GetSplashRings() const { return FMath::Clamp(SplashRings, 1, 32); }
 	UMaterialInterface* GetWaterfallMaterial() const { return WaterfallMaterial; }
+	const TSoftObjectPtr<UNiagaraSystem>& GetTopNiagaraSystem() const { return TopNiagaraSystem; }
+	const TSoftObjectPtr<UNiagaraSystem>& GetMiddleNiagaraSystem() const { return MiddleNiagaraSystem; }
+	const TSoftObjectPtr<UNiagaraSystem>& GetBottomNiagaraSystem() const { return BottomNiagaraSystem; }
+	float GetNiagaraSampleSpacing() const { return FMath::Max(NiagaraSampleSpacing, 1.0f); }
+	float GetNiagaraBoundsPadding() const { return FMath::Max(NiagaraBoundsPadding, 0.0f); }
 	bool ShouldShowPathDebug() const { return bShowPathDebug; }
 	bool ShouldShowMeshWireframe() const { return bShowMeshWireframe; }
 
@@ -119,6 +125,26 @@ protected:
 	/** Optional material assigned to all generated surfaces in slot 0. */
 	UPROPERTY(EditAnywhere, Category = "Material")
 	TObjectPtr<UMaterialInterface> WaterfallMaterial;
+
+	/** Niagara system fed with the first sample from every generated path. */
+	UPROPERTY(EditAnywhere, Category = "Niagara")
+	TSoftObjectPtr<UNiagaraSystem> TopNiagaraSystem;
+
+	/** Niagara system fed with distance-spaced interior samples from every path. */
+	UPROPERTY(EditAnywhere, Category = "Niagara")
+	TSoftObjectPtr<UNiagaraSystem> MiddleNiagaraSystem;
+
+	/** Niagara system fed with the last sample from every generated path. */
+	UPROPERTY(EditAnywhere, Category = "Niagara")
+	TSoftObjectPtr<UNiagaraSystem> BottomNiagaraSystem;
+
+	/** Distance between adjacent Middle Niagara points along each path. */
+	UPROPERTY(EditAnywhere, Category = "Niagara", meta = (ClampMin = "1.0"))
+	float NiagaraSampleSpacing = 100.0f;
+
+	/** Extra local-space extent added around Niagara point bounds. */
+	UPROPERTY(EditAnywhere, Category = "Niagara", meta = (ClampMin = "0.0"))
+	float NiagaraBoundsPadding = 100.0f;
 
 	/** Total simulation steps processed across all paths during one editor frame. */
 	UPROPERTY(EditAnywhere, Category = "Performance", meta = (ClampMin = "1", ClampMax = "10000"))
