@@ -30,7 +30,7 @@
 - [x] Runtime 模块
 - [ ] 瀑布 Actor
 - [ ] 路径模拟
-- [ ] 动态网格
+- [ ] 动态网格（阶段 4 已实现并通过编译，等待编辑器验收）
 - [ ] 自定义瀑布编辑界面
 - [ ] Niagara / Audio
 - [ ] 静态网格烘焙
@@ -367,17 +367,17 @@ Trace(Position, NextPosition)
 
 ### 实施步骤
 
-- [ ] 启用 `GeometryScripting` 插件依赖。
-- [ ] Runtime 模块添加 `GeometryFramework` 依赖。
-- [ ] 创建 `UTYWaterfallMeshComponent : UDynamicMeshComponent`。
-- [ ] 沿每条路径按距离均匀采样。
-- [ ] 计算每个采样点的切线和横向向量。
-- [ ] 每个采样点生成左、右两个顶点。
-- [ ] 相邻采样点生成两个三角形。
-- [ ] 生成法线、UV0 和切线。
-- [ ] 将路径累计距离写入 UV。
-- [ ] 支持 Width 和 SampleSpacing 参数。
-- [ ] 实现 Clear Mesh。
+- [x] 采用底层 `GeometryFramework` / `GeometryCore`，本阶段无需启用高层 `GeometryScripting` 插件。
+- [x] Runtime 模块添加 `GeometryFramework` 和 `GeometryCore` 依赖。
+- [x] 创建 `UTYWaterfallMeshComponent : UDynamicMeshComponent`。
+- [x] 沿每条路径按距离均匀采样。
+- [x] 计算每个采样点的切线和横向向量。
+- [x] 每个采样点生成左、右两个顶点。
+- [x] 相邻采样点生成两个三角形。
+- [x] 生成法线和 UV0，由 Dynamic Mesh 自动计算切线。
+- [x] 将路径累计距离写入 UV 的 V 分量。
+- [x] 支持 Ribbon Width、Mesh Sample Spacing 和 Mesh UV Length 参数。
+- [x] 实现 Clear Dynamic Mesh，并在重新生成/清除路径时同步清理网格。
 
 ### 三角形连接
 
@@ -391,7 +391,7 @@ Triangle A: L0, L1, R0
 Triangle B: R0, L1, R1
 ```
 
-实际提交前需要在 UE 中检查正反面和坐标系，必要时交换绕序。
+使用 Unreal 的顺时针正面绕序，使单面材质从瀑布上方可见；法线同样朝向水面上方。
 
 ### 验收标准
 
@@ -746,9 +746,7 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 
 ## 11. 下一步
 
-阶段 0 已通过编译验收。当前应从“阶段 1：瀑布 Actor 骨架”开始。
-
-第一轮实现只完成 Actor 和默认组件所有权，不添加路径模拟或动态网格生成逻辑。
+阶段 4 已完成代码实现和 UE 5.8 编译，当前等待编辑器内的网格朝向、UV、参数和 Undo/Redo 验收。
 
 ### 2026-09-18 - 阶段 0 / Runtime 模块边界
 
@@ -780,5 +778,15 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 方向约定：Top Spline 定义瀑布宽度，路径使用其 Right Vector 垂直流出；`Reverse Flow Direction` 可翻转流向。
 - 修改文件：Settings Component、Path Builder、Path Component 状态机、Waterfall Actor 和 Runtime Build.cs。
 - 验证方式：UE 5.8 Development Editor 编译通过；用户已完成多路径、分帧生成、取消、清理、Undo/Redo 和垂直流向验证。
-- 遗留问题：动态网格和 FX 尚未实现，因此清理操作当前只处理路径组件。
+- 遗留问题：FX 尚未实现；动态网格已在阶段 4 接入同一清理入口。
 - 下一步：通过阶段 3 验收后进入 Per-Path 动态带状网格。
+
+### 2026-09-20 - 阶段 4 / Per-Path 动态带状网格
+
+- 完成：新增 Dynamic Mesh Component 和 Mesh Builder，将全部有效路径合并为一个按距离采样的带状动态网格。
+- 网格约定：U 为横向 0 到 1，V 为路径累计距离除以 Mesh UV Length；宽度方向由 Top Spline 切线投影到路径法平面得到。
+- 参数：Ribbon Width 控制带宽，Mesh Sample Spacing 控制几何密度，Mesh UV Length 控制纵向纹理重复尺度，Waterfall Material 设置材质槽 0。
+- 生命周期：重新生成、取消或清除路径时先清除派生网格；Dynamic Mesh 保留为运行时组件，路径和生成参数仍为 Editor-only 数据。
+- 修改文件：Mesh Component、Mesh Builder、Settings Component、Waterfall Actor、Path Builder 和 Runtime Build.cs。
+- 验证方式：UE 5.8 `UE_MCPTestEditor Win64 Development` 编译通过；编辑器视觉和交互验收待完成。
+- 下一步：验证三角形正反面、UV 连续性、参数变化、清理以及 Undo/Redo，确认后提交阶段 4。

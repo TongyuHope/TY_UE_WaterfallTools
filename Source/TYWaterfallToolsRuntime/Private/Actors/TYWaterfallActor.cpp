@@ -2,6 +2,7 @@
 
 #include "Actors/TYWaterfallActor.h"
 
+#include "Components/TYWaterfallMeshComponent.h"
 #include "Components/TYWaterfallPathComponent.h"
 #include "Components/TYWaterfallSettingsComponent.h"
 #include "Components/SceneComponent.h"
@@ -45,6 +46,10 @@ ATYWaterfallActor::ATYWaterfallActor()
 	BakedMeshComponent->SetHiddenInGame(true);
 	BakedMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
+	DynamicMeshComponent = CreateDefaultSubobject<UTYWaterfallMeshComponent>(TEXT("DynamicMesh"));
+	DynamicMeshComponent->SetupAttachment(RootComp);
+	DynamicMeshComponent->SetMobility(EComponentMobility::Movable);
+
 #if WITH_EDITORONLY_DATA
 	WaterfallSettings = CreateEditorOnlyDefaultSubobject<UTYWaterfallSettingsComponent>(
 		TEXT("WaterfallSettings"));
@@ -72,6 +77,7 @@ ATYWaterfallActor::ATYWaterfallActor()
 
 #if WITH_EDITOR
 	PathBuilder.Initialize(this);
+	MeshBuilder.Initialize(this);
 #endif
 }
 
@@ -110,5 +116,18 @@ void ATYWaterfallActor::ClearGeneratedPaths()
 		"TYWaterfallTools", "ClearWaterfallPaths", "Clear Waterfall Paths"));
 	Modify();
 	PathBuilder.ClearGeneratedPaths();
+}
+
+void ATYWaterfallActor::GeneratePerPathMesh()
+{
+	MeshBuilder.BuildPerPathMesh();
+}
+
+void ATYWaterfallActor::ClearDynamicMesh()
+{
+	const FScopedTransaction Transaction(NSLOCTEXT(
+		"TYWaterfallTools", "ClearWaterfallMesh", "Clear Waterfall Mesh"));
+	Modify();
+	MeshBuilder.ClearMesh();
 }
 #endif

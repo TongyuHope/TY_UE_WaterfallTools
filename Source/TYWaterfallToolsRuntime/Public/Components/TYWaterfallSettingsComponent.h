@@ -6,6 +6,8 @@
 #include "Components/ActorComponent.h"
 #include "TYWaterfallSettingsComponent.generated.h"
 
+class UMaterialInterface;
+
 /** Authoring settings shared by all paths generated for one waterfall actor. */
 UCLASS(ClassGroup = (Waterfall), meta = (DisplayName = "TY Waterfall Settings"))
 class TYWATERFALLTOOLSRUNTIME_API UTYWaterfallSettingsComponent : public UActorComponent
@@ -27,6 +29,10 @@ public:
 	float GetFixedDeltaTime() const { return FMath::Max(FixedDeltaTime, 0.001f); }
 	int32 GetMaxSteps() const { return FMath::Max(MaxSteps, 1); }
 	float GetTerminationHeight() const { return TerminationHeight; }
+	float GetRibbonWidth() const { return FMath::Max(RibbonWidth, 1.0f); }
+	float GetMeshSampleSpacing() const { return FMath::Max(MeshSampleSpacing, 1.0f); }
+	float GetMeshUVLength() const { return FMath::Max(MeshUVLength, 1.0f); }
+	UMaterialInterface* GetWaterfallMaterial() const { return WaterfallMaterial; }
 
 protected:
 	/** Number of paths distributed across the selected part of the top spline. */
@@ -66,6 +72,22 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Simulation")
 	float TerminationHeight = -1000.0f;
+
+	/** Total width of every generated ribbon, measured in Unreal units. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
+	float RibbonWidth = 100.0f;
+
+	/** Target distance between adjacent ribbon rows. Smaller values create denser meshes. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
+	float MeshSampleSpacing = 25.0f;
+
+	/** World-space distance represented by one repeat along the material's V axis. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
+	float MeshUVLength = 200.0f;
+
+	/** Optional material assigned to slot 0 after the ribbons are generated. */
+	UPROPERTY(EditAnywhere, Category = "Mesh")
+	TObjectPtr<UMaterialInterface> WaterfallMaterial;
 
 	/** Total simulation steps processed across all paths during one editor frame. */
 	UPROPERTY(EditAnywhere, Category = "Performance", meta = (ClampMin = "1", ClampMax = "10000"))

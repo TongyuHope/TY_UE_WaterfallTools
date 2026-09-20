@@ -3,6 +3,7 @@
 #include "Generation/TYWaterfallPathBuilder.h"
 
 #include "Actors/TYWaterfallActor.h"
+#include "Components/TYWaterfallMeshComponent.h"
 #include "Components/TYWaterfallPathComponent.h"
 #include "Components/TYWaterfallSettingsComponent.h"
 #include "Components/SplineComponent.h"
@@ -161,6 +162,14 @@ void FTYWaterfallPathBuilder::ClearGeneratedPaths()
 	{
 		PendingPaths.Reset();
 		return;
+	}
+
+	// The mesh is derived from these paths. Clear it first so Undo/Redo and
+	// failed regenerations never leave geometry that represents stale inputs.
+	if (IsValid(Waterfall->DynamicMeshComponent))
+	{
+		Waterfall->DynamicMeshComponent->Modify();
+		Waterfall->DynamicMeshComponent->ClearWaterfallMesh();
 	}
 
 	for (UTYWaterfallPathComponent* Path : Waterfall->GeneratedPaths)

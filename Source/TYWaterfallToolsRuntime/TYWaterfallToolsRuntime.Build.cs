@@ -11,7 +11,8 @@ public class TYWaterfallToolsRuntime : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core"
+				"Core",
+				"GeometryFramework"
 			}
 		);
 
@@ -19,7 +20,8 @@ public class TYWaterfallToolsRuntime : ModuleRules
 			new string[]
 			{
 				"CoreUObject",
-				"Engine"
+				"Engine",
+				"GeometryCore"
 			}
 		);
 
