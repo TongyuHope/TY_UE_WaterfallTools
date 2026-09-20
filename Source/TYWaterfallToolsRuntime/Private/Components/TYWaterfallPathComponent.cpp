@@ -65,8 +65,10 @@ bool UTYWaterfallPathComponent::InitializeSimulation(
 
 	Modify();
 	ClearPreviewPath();
+	NormalizedTopSplinePosition = FMath::Clamp(SplineTime, 0.0f, 1.0f);
 
 	USplineComponent* TopSpline = Waterfall->GetTopSpline();
+	TopSplineDistance = TopSpline->GetSplineLength() * NormalizedTopSplinePosition;
 	const FVector StartPosition = TopSpline->GetLocationAtTime(
 		SplineTime, ESplineCoordinateSpace::World, true);
 	const FVector UpDirection = TopSpline->GetUpVectorAtTime(
@@ -230,6 +232,15 @@ bool UTYWaterfallPathComponent::BuildResampledSamples(float SampleSpacing)
 	}
 
 	const int32 SampleCount = FMath::Max(FMath::CeilToInt(TotalDistance / SafeSpacing) + 1, 2);
+	FVector WidthDirection = FVector::RightVector;
+	if (const ATYWaterfallActor* Waterfall = GetWaterfallOwner())
+	{
+		if (const USplineComponent* TopSpline = Waterfall->GetTopSpline())
+		{
+			WidthDirection = TopSpline->GetDirectionAtTime(
+				NormalizedTopSplinePosition, ESplineCoordinateSpace::World, true).GetSafeNormal();
+		}
+	}
 	ResampledSamples.Reserve(SampleCount);
 	int32 SourceIndex = 0;
 	for (int32 SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex)
@@ -255,7 +266,12 @@ bool UTYWaterfallPathComponent::BuildResampledSamples(float SampleSpacing)
 		const FVector Tangent = (NextIndex != SourceIndex
 			? (B.Position - A.Position)
 			: A.Velocity).GetSafeNormal();
-		const FVector Normal = FMath::Lerp(A.HitNormal, B.HitNormal, Alpha).GetSafeNormal();
+		FVector SideTangent = FVector::CrossProduct(FVector::UpVector, Tangent).GetSafeNormal();
+		if (SideTangent.IsNearlyZero())
+		{
+			SideTangent = FVector::VectorPlaneProject(WidthDirection, Tangent).GetSafeNormal();
+		}
+		const FVector Normal = FVector::CrossProduct(Tangent, SideTangent).GetSafeNormal();
 		const float Speed = Velocity.Size();
 		const float Impact = (A.State == ETYWaterfallPointState::Sliding
 			|| B.State == ETYWaterfallPointState::Sliding) ? 1.0f : 0.0f;
@@ -265,14 +281,25 @@ bool UTYWaterfallPathComponent::BuildResampledSamples(float SampleSpacing)
 				Tangent).Size()
 			: 0.0f;
 
+		// Match WaterfallTools: each cached point contributes one sampled path
+		// length divided by its speed, including the first point.
+		float Flow = SafeSpacing / FMath::Max(Speed, 1.0f);
+		if (!ResampledSamples.IsEmpty())
+		{
+			const FTYWaterfallSample& Previous = ResampledSamples.Last();
+			Flow += Previous.Flow;
+		}
 		FTYWaterfallSample& Sample = ResampledSamples.AddDefaulted_GetRef();
 		Sample.Position = Position;
 		Sample.Tangent = Tangent.IsNearlyZero() ? FVector::ForwardVector : Tangent;
-		Sample.Normal = Normal.IsNearlyZero() ? FVector::UpVector : Normal;
+		Sample.Normal = Normal.IsNearlyZero()
+			? FMath::Lerp(A.HitNormal, B.HitNormal, Alpha).GetSafeNormal()
+			: Normal;
 		Sample.Velocity = Velocity;
 		Sample.Distance = Distance;
 		Sample.NormalizedDistance = Distance / TotalDistance;
 		Sample.Speed = Speed;
+		Sample.Flow = Flow;
 		Sample.Impact = Impact;
 		Sample.Turbulence = FMath::Clamp(FMath::Max(DirectionChange, Impact), 0.0f, 1.0f);
 		Sample.RandomValue = StableSampleRandom(SampleSeed, Distance);
@@ -290,6 +317,8 @@ void UTYWaterfallPathComponent::ClearPreviewPath()
 	StepsCompleted = 0;
 	CurrentPoint = FTYWaterfallSimPoint();
 	ResampledSamples.Reset();
+	NormalizedTopSplinePosition = 0.0f;
+	TopSplineDistance = 0.0f;
 	ClearSplinePoints(false);
 	UpdateSpline();
 }

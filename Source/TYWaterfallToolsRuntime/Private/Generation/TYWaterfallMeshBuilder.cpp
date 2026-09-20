@@ -51,7 +51,9 @@ bool FTYWaterfallMeshBuilder::BuildMesh()
 		Waterfall->WaterfallSettings->ShouldGenerateSplash(),
 		Waterfall->WaterfallSettings->GetRibbonWidth(),
 		Waterfall->WaterfallSettings->GetCrossWidth(),
-		Waterfall->WaterfallSettings->GetMeshUVLength(),
+		Waterfall->WaterfallSettings->GetPerPathSubdivisions(),
+		Waterfall->WaterfallSettings->GetCrossSubdivisions(),
+		Waterfall->WaterfallSettings->GetBaseUVScale(),
 		Waterfall->WaterfallSettings->GetSplashFrontRadius(),
 		Waterfall->WaterfallSettings->GetSplashBackRadius(),
 		Waterfall->WaterfallSettings->GetSplashRadialSegments(),
@@ -62,8 +64,16 @@ bool FTYWaterfallMeshBuilder::BuildMesh()
 		Waterfall->DynamicMeshComponent->SetEnableWireframeRenderPass(
 			Waterfall->WaterfallSettings->ShouldShowMeshWireframe());
 		Waterfall->DynamicMeshComponent->MarkRenderStateDirty();
+		// Slot indices are intentionally stable even when a mesh mode is disabled.
+		// Triangle material IDs use the same Singular/Per-Path/Cross/Splash mapping.
 		Waterfall->DynamicMeshComponent->SetMaterial(
-			0, Waterfall->WaterfallSettings->GetWaterfallMaterial());
+			0, Waterfall->WaterfallSettings->GetSingularMaterial());
+		Waterfall->DynamicMeshComponent->SetMaterial(
+			1, Waterfall->WaterfallSettings->GetPerPathMaterial());
+		Waterfall->DynamicMeshComponent->SetMaterial(
+			2, Waterfall->WaterfallSettings->GetCrossMaterial());
+		Waterfall->DynamicMeshComponent->SetMaterial(
+			3, Waterfall->WaterfallSettings->GetSplashMaterial());
 		Waterfall->MarkPackageDirty();
 	}
 	return bBuilt;

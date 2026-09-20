@@ -376,7 +376,7 @@ Trace(Position, NextPosition)
 - [x] 相邻采样点生成两个三角形。
 - [x] 生成法线和 UV0，由 Dynamic Mesh 自动计算切线。
 - [x] 将路径累计距离写入 UV 的 V 分量。
-- [x] 支持 Ribbon Width、Mesh Sample Spacing 和 Mesh UV Length 参数。
+- [x] 支持 Ribbon Width、Mesh Sample Spacing、横向 Subdivisions 和 Base UV Scale 参数。
 - [x] 实现 Clear Dynamic Mesh，并在重新生成/清除路径时同步清理网格。
 
 ### 三角形连接
@@ -422,6 +422,7 @@ struct FTYWaterfallSample
     float Distance = 0.0f;
     float NormalizedDistance = 0.0f;
     float Speed = 0.0f;
+    float Flow = 0.0f;
     float Impact = 0.0f;
     float Turbulence = 0.0f;
     float RandomValue = 0.0f;
@@ -434,22 +435,26 @@ struct FTYWaterfallSample
 - [x] 缓存 Position、Tangent、Normal、Velocity 和 Distance。
 - [x] 基于碰撞冲击和方向变化计算简化 Turbulence。
 - [x] 定义固定材质通道协议。
-- [x] UV0 用于基础材质坐标。
-- [x] UV1 保存累计距离和归一化距离。
-- [x] UV2 保存速度（除以 1000）和湍流。
-- [x] Vertex Color 保存湍流、冲击和稳定随机值。
+- [x] UV0 保存归一化的横向位置和沿路径位置。
+- [x] UV1 保存乘以 Base UV Scale 的横向与纵向厘米距离。
+- [x] UV2 保存速度（cm/s）和累计流动时间（秒）。
+- [x] UV3 保存路径固定随机种子和顶部样条归一化位置。
+- [x] Vertex Color 按参考材质协议保存编码流向和湍流。
 - [x] 在文档中锁定通道语义，后续不随意更改。
 
 ### 阶段 5 材质通道协议
 
 | 通道 | X / R | Y / G | Z / B | W / A |
 | --- | --- | --- | --- | --- |
-| UV0 | Ribbon 横向 0 到 1 | 距离 / Mesh UV Length | - | - |
-| UV1 | 累计距离 | 归一化距离 0 到 1 | - | - |
-| UV2 | 速度 / 1000 | 湍流 0 到 1 | - | - |
-| Vertex Color | 湍流 0 到 1 | 冲击 0 到 1 | 稳定随机值 0 到 1 | 1 |
+| UV0 | 横向归一化坐标 × Base UV Scale.X；Splash 为径向 U | 沿路径归一化距离 × Base UV Scale.Y；Splash 为径向 V | - | - |
+| UV1 | 横向厘米距离 × Base UV Scale.X；Singular 为顶部样条距离 | 沿路径厘米距离 × Base UV Scale.Y；Splash 为局部平面坐标 | - | - |
+| UV2 | 速度（cm/s） | 累计 Flow × Base UV Scale.Y；Splash 不缩放 | - | - |
+| UV3 | 路径固定随机种子 0 到 1 | 顶部样条归一化位置 0 到 1 | - | - |
+| Vertex Color | 流向 X 从 -1..1 映射到 0..1 | 流向 Y 映射到 0..1 | 流向 Z 映射到 0..1 | 湍流 |
 
-`FTYWaterfallSample` 是 mesh、材质和后续 Niagara 之间的公共数据协议。随机值由路径种子和距离生成；改变同一 Seed 下的采样间距不会改变相同距离位置的随机结果。
+`FTYWaterfallSample` 是 mesh、材质和 Niagara 之间的公共数据协议。UV3.X 来自路径种子，同一路径上保持不变。UV2.Y 按参考插件的 `SampleLength / Speed` 逐点累积；Vertex Color RGB 保存流向，A 保存湍流。
+
+此前阶段 5 的三通道协议已被四通道协议取代：原来 UV0.V 的纹理重复坐标移到 UV1.Y，UV1 和 UV2 的语义也改变。使用旧协议的材质需要同步调整 `TextureCoordinate` 通道索引与缩放。
 
 ### 验收标准
 
@@ -532,13 +537,13 @@ struct FTYWaterfallSample
 - Singular、Per-Path、Cross 和 Splash 分别提供独立开关；`Generate Mesh` 只追加已勾选的类型，并用完整结果替换当前 Dynamic Mesh。
 - 四个开关全部关闭时会清空旧 Dynamic Mesh，不保留上一次生成结果。
 - Singular 至少需要两条有效路径；路径先按顶部起点在宽度轴上的投影排序，再按归一化距离重映射到统一行数并连接相邻路径。
-- Singular 的 UV0 使用横向路径比例和纵向世界距离，UV1 使用横向累计世界距离和纵向归一化距离。
+- Singular 的 UV0 使用横向路径比例和纵向归一化距离，UV1 使用顶部样条厘米距离和纵向厘米距离，并乘以 Base UV Scale。
 - Per Path 使用 Ribbon Width；Cross 使用独立的 Cross Width，并绕路径切线旋转 90 度。
-- Singular、Per Path 和 Cross 复用 Mesh Sample Spacing、Mesh UV Length 和阶段 5 材质通道。
+- Singular、Per Path 和 Cross 复用 Mesh Sample Spacing、Base UV Scale 和阶段 5 材质通道。
 - Splash 使用路径最后一个稳定采样的切线与法线确定落水平面。
 - Splash Front Radius 和 Back Radius 分别控制水流前方、后方的延伸距离。
 - Splash Radial Segments 控制圆周密度，Splash Rings 控制从中心到边缘的径向密度。
-- Splash UV0 使用中心为 `(0.5, 0.5)` 的径向映射；UV1、UV2 和 Vertex Color 延续阶段 5 的通道语义。
+- Splash UV0 使用中心为 `(0.5, 0.5)` 的径向映射；UV1 使用落地平面的局部世界距离，UV2、UV3 和 Vertex Color 遵循四通道协议。
 
 ### Singular 边界
 
@@ -560,7 +565,8 @@ struct FTYWaterfallSample
 - 四种模式单独启用时只生成对应几何，任意组合启用时追加到同一个 Dynamic Mesh。
 - 全部关闭后重新生成会清空旧网格并隐藏 Dynamic Mesh Component。
 - 重新生成会整体替换旧网格，不会重复累积几何。
-- 四类几何复用材质槽 0、线框 Debug 和稳定材质数据通道。
+- 四类几何复用线框 Debug 和稳定材质数据通道，但分别使用固定材质槽与 Triangle Material ID。
+- 材质槽固定为 `0 = Singular`、`1 = Per-Path`、`2 = Cross`、`3 = Splash`；关闭模式不会压缩或改变其余槽位。
 - Singular 可连接长度不同的路径，至少两条有效路径时生成，正面绕序与 Per-Path 一致。
 - Splash 正面朝向终点采样法线，参数变化不会产生越界或退化索引。
 
@@ -835,8 +841,8 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 ### 2026-09-20 - 阶段 4 / Per-Path 动态带状网格
 
 - 完成：新增 Dynamic Mesh Component 和 Mesh Builder，将全部有效路径合并为一个按距离采样的带状动态网格。
-- 网格约定：U 为横向 0 到 1，V 为路径累计距离除以 Mesh UV Length；宽度方向由 Top Spline 切线投影到路径法平面得到。
-- 参数：Ribbon Width 控制带宽，Mesh Sample Spacing 控制几何密度，Mesh UV Length 控制纵向纹理重复尺度，Waterfall Material 设置材质槽 0。
+- 网格约定：UV0 为归一化表面坐标，UV1 为厘米距离坐标；宽度方向由 Top Spline 切线投影到路径法平面得到。
+- 参数：Ribbon Width 控制带宽，Mesh Sample Spacing 控制纵向几何密度，Base UV Scale 控制参考材质协议的 UV 缩放；后续四类几何改为独立材质槽。
 - 生命周期：重新生成、取消或清除路径时先清除派生网格；Dynamic Mesh 保留为运行时组件，路径和生成参数仍为 Editor-only 数据。
 - 修改文件：Mesh Component、Mesh Builder、Settings Component、Waterfall Actor、Path Builder 和 Runtime Build.cs。
 - 验证方式：UE 5.8 `UE_MCPTestEditor Win64 Development` 编译通过；编辑器视觉和交互验收待完成。
@@ -896,6 +902,35 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 修改文件：Settings Component、Mesh Component、Mesh Builder、Editor Mode Toolkit 和本路线图。
 - 验证方式：已完成静态差异检查；UE 5.8 编译与编辑器视觉验证由用户执行。
 - 下一步：分别验证四种单项模式、组合模式、全关清空、Singular 正面与不同路径长度。
+
+### 2026-09-20 - 动态网格 / 四组 UV 修正
+
+- 参考：`SH_WaterfallBuilder_Mesh.cpp` 定义 UV0-UV3 的逐顶点语义；`SH_WaterfallBuilder_Static.cpp` 将已有 Dynamic Mesh 合并并烘焙，不负责生成 UV。
+- 完成：四种网格均创建四层 UV overlay，逐顶点写入并为每个三角形设置 UV0-UV3；Vertex Color 的数据和写入保持不变。
+- 数据：路径采样增加累计流动时间，路径保存顶部样条位置及距离并由路径种子生成固定 UV 随机值；Singular 重采样时同步插值 Flow。
+- 兼容性：UV0.V、UV1 和 UV2 相比旧三通道协议有语义变化，旧材质需要依照上方协议调整；本阶段不实现 Static Mesh Bake。
+- 旧关卡：已有路径不含新保存的 UV3 元数据；升级后先重新 Generate Paths，再 Generate Mesh。
+- 修改文件：Sample、Path Component、Mesh Component、Settings Component 和本路线图。
+- 验证方式：由用户在 UE 5.8 编译，并用 Debug Material 分别读取四种模式的 UV0-UV3 与 Vertex Color。
+
+### 2026-09-20 - 动态网格 / 四类独立材质
+
+- 完成：移除单一 Waterfall Material 设置，增加 Singular、Per-Path、Cross、Splash 四个独立材质设置。
+- 槽位：固定使用 `0 = Singular`、`1 = Per-Path`、`2 = Cross`、`3 = Splash`，不随模式开关压缩，便于材质实例和未来 Static Mesh Bake 保持稳定映射。
+- 网格：启用 Dynamic Mesh 的 per-triangle Material ID attribute，每类几何生成三角形时写入对应槽位 ID。
+- 面板：材质字段跟随对应生成开关显示或隐藏。
+- 验证方式：由用户在 UE 5.8 编译，为四个槽设置明显不同的材质并验证单项与组合生成。
+
+### 2026-09-20 - 动态网格 / WaterfallTools 材质兼容修正
+
+- 原因：简化协议只能让旧 Debug Material 正常显示，不能驱动参考插件材质；Singular 和 Cross 尤其依赖 Vertex Color RGB 流向、Alpha 湍流及未经归一化的距离数据。
+- 参考：直接依照 `SH_WaterfallBuilder_Mesh.cpp` 的 `FOS_PathValues`、`MeshBuffers_CalculateColour`、`MeshBuffers_CalculateUV2/UV3` 和 `BuildMeshBuffers_OnePath`。
+- 数据：Vertex Color 改为 `(NormalizedVelocity + 1) * 0.5` 与 Alpha=Turbulence；UV0、UV1、UV2、UV3 改用参考插件语义，Base UV Scale 默认 `(1,1)`。
+- Flow：按 `SampleLength / Speed` 从首个采样开始累计，与参考路径缓存一致。
+- 局部帧：采样法线改为由流向和横向切线叉乘得到，不再把碰撞 HitNormal 当作水幕表面法线；退化方向回退到顶部样条宽度轴。
+- 拓扑：Per-Path 默认增加 5 个横向内部点，Cross 默认增加 2 个横向内部点；每行均为 `Subdivisions + 2` 个顶点并完整写入四组 UV、Vertex Color 和 Material ID。
+- 保留：四类材质固定槽、模式开关、Singular 统一纵向重采样、现有 Splash 参数与 Niagara 数据协议不变。
+- 验证方式：重新 Generate Paths 和 Generate Mesh，分别只开启一种模式，用原 WaterfallTools 材质验证可见性、流向、动画与遮罩。
 
 ### 2026-09-20 - 阶段 9 / Niagara 数据和组件
 

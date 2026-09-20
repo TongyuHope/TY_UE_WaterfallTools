@@ -40,13 +40,18 @@ public:
 	bool ShouldGenerateSplash() const { return bGenerateSplash; }
 	float GetRibbonWidth() const { return FMath::Max(RibbonWidth, 1.0f); }
 	float GetCrossWidth() const { return FMath::Max(CrossWidth, 1.0f); }
+	int32 GetPerPathSubdivisions() const { return FMath::Clamp(PerPathSubdivisions, 0, 32); }
+	int32 GetCrossSubdivisions() const { return FMath::Clamp(CrossSubdivisions, 0, 32); }
 	float GetMeshSampleSpacing() const { return FMath::Max(MeshSampleSpacing, 1.0f); }
-	float GetMeshUVLength() const { return FMath::Max(MeshUVLength, 1.0f); }
+	FVector2D GetBaseUVScale() const { return BaseUVScale; }
 	float GetSplashFrontRadius() const { return FMath::Max(SplashFrontRadius, 1.0f); }
 	float GetSplashBackRadius() const { return FMath::Max(SplashBackRadius, 1.0f); }
 	int32 GetSplashRadialSegments() const { return FMath::Clamp(SplashRadialSegments, 3, 128); }
 	int32 GetSplashRings() const { return FMath::Clamp(SplashRings, 1, 32); }
-	UMaterialInterface* GetWaterfallMaterial() const { return WaterfallMaterial; }
+	UMaterialInterface* GetSingularMaterial() const { return SingularMaterial; }
+	UMaterialInterface* GetPerPathMaterial() const { return PerPathMaterial; }
+	UMaterialInterface* GetCrossMaterial() const { return CrossMaterial; }
+	UMaterialInterface* GetSplashMaterial() const { return SplashMaterial; }
 	const TSoftObjectPtr<UNiagaraSystem>& GetTopNiagaraSystem() const { return TopNiagaraSystem; }
 	const TSoftObjectPtr<UNiagaraSystem>& GetMiddleNiagaraSystem() const { return MiddleNiagaraSystem; }
 	const TSoftObjectPtr<UNiagaraSystem>& GetBottomNiagaraSystem() const { return BottomNiagaraSystem; }
@@ -118,13 +123,21 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0", EditCondition = "bGenerateCross", EditConditionHides))
 	float CrossWidth = 50.0f;
 
+	/** Interior vertices across each Per-Path ribbon, matching WaterfallTools. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "0", ClampMax = "32", EditCondition = "bGeneratePerPath", EditConditionHides))
+	int32 PerPathSubdivisions = 5;
+
+	/** Interior vertices across each Cross plane, matching WaterfallTools. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "0", ClampMax = "32", EditCondition = "bGenerateCross", EditConditionHides))
+	int32 CrossSubdivisions = 2;
+
 	/** Target distance between adjacent ribbon rows. Smaller values create denser meshes. */
 	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0", EditCondition = "bGenerateSingular || bGeneratePerPath || bGenerateCross", EditConditionHides))
 	float MeshSampleSpacing = 25.0f;
 
-	/** World-space distance represented by one repeat along the material's V axis. */
-	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0", EditCondition = "bGenerateSingular || bGeneratePerPath || bGenerateCross", EditConditionHides))
-	float MeshUVLength = 200.0f;
+	/** Multiplies UV0, UV1 and UV2.Y using the WaterfallTools material protocol. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (DisplayName = "Base UV Scale", EditCondition = "bGenerateSingular || bGeneratePerPath || bGenerateCross", EditConditionHides))
+	FVector2D BaseUVScale = FVector2D(1.0f, 1.0f);
 
 	/** Distance the splash extends in the incoming flow direction. */
 	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0", EditCondition = "bGenerateSplash", EditConditionHides))
@@ -142,9 +155,21 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1", ClampMax = "32", EditCondition = "bGenerateSplash", EditConditionHides))
 	int32 SplashRings = 4;
 
-	/** Optional material assigned to all generated surfaces in slot 0. */
-	UPROPERTY(EditAnywhere, Category = "Material")
-	TObjectPtr<UMaterialInterface> WaterfallMaterial;
+	/** Material used by the continuous Singular sheet in slot 0. */
+	UPROPERTY(EditAnywhere, Category = "Material", meta = (EditCondition = "bGenerateSingular", EditConditionHides))
+	TObjectPtr<UMaterialInterface> SingularMaterial;
+
+	/** Material used by Per-Path ribbons in slot 1. */
+	UPROPERTY(EditAnywhere, Category = "Material", meta = (DisplayName = "Per-Path Material", EditCondition = "bGeneratePerPath", EditConditionHides))
+	TObjectPtr<UMaterialInterface> PerPathMaterial;
+
+	/** Material used by perpendicular Cross ribbons in slot 2. */
+	UPROPERTY(EditAnywhere, Category = "Material", meta = (EditCondition = "bGenerateCross", EditConditionHides))
+	TObjectPtr<UMaterialInterface> CrossMaterial;
+
+	/** Material used by endpoint Splash surfaces in slot 3. */
+	UPROPERTY(EditAnywhere, Category = "Material", meta = (EditCondition = "bGenerateSplash", EditConditionHides))
+	TObjectPtr<UMaterialInterface> SplashMaterial;
 
 	/** Niagara system fed with the first sample from every generated path. */
 	UPROPERTY(EditAnywhere, Category = "Niagara")

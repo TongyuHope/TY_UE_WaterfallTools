@@ -10,26 +10,40 @@ using namespace UE::Geometry;
 
 namespace
 {
+enum class EWaterfallMaterialSlot : int32
+{
+	Singular = 0,
+	PerPath = 1,
+	Cross = 2,
+	Splash = 3
+};
+
 struct FWaterfallMeshAttributes
 {
 	FDynamicMeshNormalOverlay* Normals = nullptr;
 	FDynamicMeshUVOverlay* UV0 = nullptr;
 	FDynamicMeshUVOverlay* UV1 = nullptr;
 	FDynamicMeshUVOverlay* UV2 = nullptr;
+	FDynamicMeshUVOverlay* UV3 = nullptr;
 	FDynamicMeshColorOverlay* Colors = nullptr;
+	FDynamicMeshMaterialAttribute* MaterialIDs = nullptr;
 };
 
 FWaterfallMeshAttributes InitializeAttributes(FDynamicMesh3& Mesh)
 {
+	// Every surface must populate all four UV overlays, including triangle IDs.
 	Mesh.EnableAttributes();
-	Mesh.Attributes()->SetNumUVLayers(3);
+	Mesh.Attributes()->SetNumUVLayers(4);
 	Mesh.Attributes()->EnablePrimaryColors();
+	Mesh.Attributes()->EnableMaterialID();
 	return {
 		Mesh.Attributes()->PrimaryNormals(),
 		Mesh.Attributes()->GetUVLayer(0),
 		Mesh.Attributes()->GetUVLayer(1),
 		Mesh.Attributes()->GetUVLayer(2),
-		Mesh.Attributes()->PrimaryColors()
+		Mesh.Attributes()->GetUVLayer(3),
+		Mesh.Attributes()->PrimaryColors(),
+		Mesh.Attributes()->GetMaterialID()
 	};
 }
 
@@ -41,7 +55,9 @@ void SetTriangleAttributes(
 	const TArray<int32>& UV0IDs,
 	const TArray<int32>& UV1IDs,
 	const TArray<int32>& UV2IDs,
-	const TArray<int32>& ColorIDs)
+	const TArray<int32>& UV3IDs,
+	const TArray<int32>& ColorIDs,
+	EWaterfallMaterialSlot MaterialSlot)
 {
 	if (TriangleID < 0)
 	{
@@ -57,7 +73,20 @@ void SetTriangleAttributes(
 	Attributes.UV0->SetTriangle(TriangleID, Remap(UV0IDs));
 	Attributes.UV1->SetTriangle(TriangleID, Remap(UV1IDs));
 	Attributes.UV2->SetTriangle(TriangleID, Remap(UV2IDs));
+	Attributes.UV3->SetTriangle(TriangleID, Remap(UV3IDs));
 	Attributes.Colors->SetTriangle(TriangleID, Remap(ColorIDs));
+	Attributes.MaterialIDs->SetValue(TriangleID, static_cast<int32>(MaterialSlot));
+}
+
+FVector4f MakeWaterfallVertexColor(FVector Direction, float Turbulence)
+{
+	Direction = Direction.GetSafeNormal();
+	const FVector EncodedDirection = (Direction + FVector::OneVector) * 0.5;
+	return FVector4f(
+		static_cast<float>(EncodedDirection.X),
+		static_cast<float>(EncodedDirection.Y),
+		static_cast<float>(EncodedDirection.Z),
+		Turbulence);
 }
 
 FTYWaterfallSample InterpolateSampleAtNormalizedDistance(
@@ -97,6 +126,7 @@ FTYWaterfallSample InterpolateSampleAtNormalizedDistance(
 	Result.Distance = FMath::Lerp(Lower.Distance, Upper.Distance, Alpha);
 	Result.NormalizedDistance = TargetDistance;
 	Result.Speed = FMath::Lerp(Lower.Speed, Upper.Speed, Alpha);
+	Result.Flow = FMath::Lerp(Lower.Flow, Upper.Flow, Alpha);
 	Result.Impact = FMath::Lerp(Lower.Impact, Upper.Impact, Alpha);
 	Result.Turbulence = FMath::Lerp(Lower.Turbulence, Upper.Turbulence, Alpha);
 	Result.RandomValue = FMath::Lerp(Lower.RandomValue, Upper.RandomValue, Alpha);
@@ -109,11 +139,14 @@ bool AppendSingular(
 	const TArray<TObjectPtr<UTYWaterfallPathComponent>>& Paths,
 	const FTransform& WorldToMesh,
 	FVector WorldWidthAxis,
-	float UVLength)
+	FVector2D BaseUVScale)
 {
 	struct FSortedPath
 	{
 		const TArray<FTYWaterfallSample>* Samples = nullptr;
+		float UVSeed = 0.0f;
+		float TopSplinePosition = 0.0f;
+		float TopSplineDistance = 0.0f;
 		double WidthPosition = 0.0;
 	};
 
@@ -132,7 +165,9 @@ bool AppendSingular(
 			continue;
 		}
 
-		SortedPaths.Add({ &Samples, FVector::DotProduct(Samples[0].Position, WorldWidthAxis) });
+		SortedPaths.Add({ &Samples, Path->GetUVSeed(),
+			Path->GetNormalizedTopSplinePosition(), Path->GetTopSplineDistance(),
+			FVector::DotProduct(Samples[0].Position, WorldWidthAxis) });
 		RowCount = FMath::Max(RowCount, Samples.Num());
 	}
 
@@ -162,33 +197,20 @@ bool AppendSingular(
 		}
 	}
 
-	TArray<float> AcrossDistances;
-	AcrossDistances.Init(0.0f, PathCount * RowCount);
-	for (int32 RowIndex = 0; RowIndex < RowCount; ++RowIndex)
-	{
-		for (int32 PathIndex = 1; PathIndex < PathCount; ++PathIndex)
-		{
-			const int32 CurrentIndex = PathIndex * RowCount + RowIndex;
-			const int32 PreviousIndex = (PathIndex - 1) * RowCount + RowIndex;
-			AcrossDistances[CurrentIndex] = AcrossDistances[PreviousIndex]
-				+ FVector::Distance(
-					GridSamples[PreviousIndex].Position,
-					GridSamples[CurrentIndex].Position);
-		}
-	}
-
 	const int32 VertexCount = PathCount * RowCount;
 	TArray<int32> VertexIDs;
 	TArray<int32> NormalIDs;
 	TArray<int32> UV0IDs;
 	TArray<int32> UV1IDs;
 	TArray<int32> UV2IDs;
+	TArray<int32> UV3IDs;
 	TArray<int32> ColorIDs;
 	VertexIDs.Reserve(VertexCount);
 	NormalIDs.Reserve(VertexCount);
 	UV0IDs.Reserve(VertexCount);
 	UV1IDs.Reserve(VertexCount);
 	UV2IDs.Reserve(VertexCount);
+	UV3IDs.Reserve(VertexCount);
 	ColorIDs.Reserve(VertexCount);
 
 	for (int32 PathIndex = 0; PathIndex < PathCount; ++PathIndex)
@@ -228,13 +250,17 @@ bool AppendSingular(
 			NormalIDs.Add(Attributes.Normals->AppendElement(FVector3f(
 				WorldToMesh.TransformVectorNoScale(WorldNormal).GetSafeNormal())));
 			UV0IDs.Add(Attributes.UV0->AppendElement(FVector2f(
-				PathAlpha, Sample.Distance / UVLength)));
+				PathAlpha * BaseUVScale.X,
+				Sample.NormalizedDistance * BaseUVScale.Y)));
 			UV1IDs.Add(Attributes.UV1->AppendElement(FVector2f(
-				AcrossDistances[GridIndex], Sample.NormalizedDistance)));
+				SortedPaths[PathIndex].TopSplineDistance * BaseUVScale.X,
+				Sample.Distance * BaseUVScale.Y)));
 			UV2IDs.Add(Attributes.UV2->AppendElement(FVector2f(
-				Sample.Speed / 1000.0f, Sample.Turbulence)));
-			ColorIDs.Add(Attributes.Colors->AppendElement(FVector4f(
-				Sample.Turbulence, Sample.Impact, Sample.RandomValue, 1.0f)));
+				Sample.Speed, Sample.Flow * BaseUVScale.Y)));
+			UV3IDs.Add(Attributes.UV3->AppendElement(FVector2f(
+				SortedPaths[PathIndex].UVSeed, SortedPaths[PathIndex].TopSplinePosition)));
+			ColorIDs.Add(Attributes.Colors->AppendElement(
+				MakeWaterfallVertexColor(Sample.Velocity, Sample.Turbulence)));
 		}
 	}
 
@@ -255,9 +281,11 @@ bool AppendSingular(
 			const int32 TriangleB = Mesh.AppendTriangle(
 				VertexIDs[CornersB.A], VertexIDs[CornersB.B], VertexIDs[CornersB.C]);
 			SetTriangleAttributes(Attributes, TriangleA, CornersA,
-				NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
+				NormalIDs, UV0IDs, UV1IDs, UV2IDs, UV3IDs, ColorIDs,
+				EWaterfallMaterialSlot::Singular);
 			SetTriangleAttributes(Attributes, TriangleB, CornersB,
-				NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
+				NormalIDs, UV0IDs, UV1IDs, UV2IDs, UV3IDs, ColorIDs,
+				EWaterfallMaterialSlot::Singular);
 		}
 	}
 
@@ -271,8 +299,12 @@ bool AppendRibbon(
 	const FTransform& WorldToMesh,
 	FVector WorldWidthAxis,
 	float Width,
-	float UVLength,
-	float RotationDegrees)
+	int32 Subdivisions,
+	FVector2D BaseUVScale,
+	float RotationDegrees,
+	float UVSeed,
+	float TopSplinePosition,
+	EWaterfallMaterialSlot MaterialSlot)
 {
 	if (Samples.Num() < 2 || Samples.Last().Distance <= KINDA_SMALL_NUMBER)
 	{
@@ -280,18 +312,23 @@ bool AppendRibbon(
 	}
 
 	const int32 SegmentCount = Samples.Num() - 1;
+	const int32 SafeSubdivisions = FMath::Clamp(Subdivisions, 0, 32);
+	const int32 RowVertexCount = SafeSubdivisions + 2;
 	TArray<int32> VertexIDs;
 	TArray<int32> NormalIDs;
 	TArray<int32> UV0IDs;
 	TArray<int32> UV1IDs;
 	TArray<int32> UV2IDs;
+	TArray<int32> UV3IDs;
 	TArray<int32> ColorIDs;
-	VertexIDs.Reserve(Samples.Num() * 2);
-	NormalIDs.Reserve(Samples.Num() * 2);
-	UV0IDs.Reserve(Samples.Num() * 2);
-	UV1IDs.Reserve(Samples.Num() * 2);
-	UV2IDs.Reserve(Samples.Num() * 2);
-	ColorIDs.Reserve(Samples.Num() * 2);
+	const int32 VertexCount = Samples.Num() * RowVertexCount;
+	VertexIDs.Reserve(VertexCount);
+	NormalIDs.Reserve(VertexCount);
+	UV0IDs.Reserve(VertexCount);
+	UV1IDs.Reserve(VertexCount);
+	UV2IDs.Reserve(VertexCount);
+	UV3IDs.Reserve(VertexCount);
+	ColorIDs.Reserve(VertexCount);
 
 	for (const FTYWaterfallSample& Sample : Samples)
 	{
@@ -313,51 +350,59 @@ bool AppendRibbon(
 		WorldAcross = WorldAcross.RotateAngleAxis(RotationDegrees, WorldTangent);
 		const FVector WorldNormal = FVector::CrossProduct(
 			WorldAcross, WorldTangent).GetSafeNormal();
-		const FVector HalfWidthOffset = WorldAcross * (Width * 0.5f);
-		const FVector LocalLeft = WorldToMesh.TransformPosition(
-			Sample.Position - HalfWidthOffset);
-		const FVector LocalRight = WorldToMesh.TransformPosition(
-			Sample.Position + HalfWidthOffset);
+		// WaterfallTools treats Per-Path width as the total width, while Cross
+		// width is the distance from its centre to either side.
+		const float HalfWidth = MaterialSlot == EWaterfallMaterialSlot::Cross
+			? Width : Width * 0.5f;
+		const FVector HalfWidthOffset = WorldAcross * HalfWidth;
+		const FVector WorldLeft = Sample.Position - HalfWidthOffset;
+		const FVector WorldRight = Sample.Position + HalfWidthOffset;
 		const FVector3f LocalNormal = FVector3f(
 			WorldToMesh.TransformVectorNoScale(WorldNormal).GetSafeNormal());
 
-		VertexIDs.Add(Mesh.AppendVertex(FVector3d(LocalLeft)));
-		VertexIDs.Add(Mesh.AppendVertex(FVector3d(LocalRight)));
-		NormalIDs.Add(Attributes.Normals->AppendElement(LocalNormal));
-		NormalIDs.Add(Attributes.Normals->AppendElement(LocalNormal));
-		UV0IDs.Add(Attributes.UV0->AppendElement(FVector2f(
-			0.0f, Sample.Distance / UVLength)));
-		UV0IDs.Add(Attributes.UV0->AppendElement(FVector2f(
-			1.0f, Sample.Distance / UVLength)));
-
-		const FVector2f UV1(Sample.Distance, Sample.NormalizedDistance);
-		const FVector2f UV2(Sample.Speed / 1000.0f, Sample.Turbulence);
-		const FVector4f Color(
-			Sample.Turbulence, Sample.Impact, Sample.RandomValue, 1.0f);
-		for (int32 Side = 0; Side < 2; ++Side)
+		const FVector2f UV2(Sample.Speed, Sample.Flow * BaseUVScale.Y);
+		const FVector2f UV3(UVSeed, TopSplinePosition);
+		const FVector4f Color = MakeWaterfallVertexColor(
+			Sample.Velocity, Sample.Turbulence);
+		for (int32 ColumnIndex = 0; ColumnIndex < RowVertexCount; ++ColumnIndex)
 		{
-			UV1IDs.Add(Attributes.UV1->AppendElement(UV1));
+			const float ColumnAlpha = static_cast<float>(ColumnIndex)
+				/ static_cast<float>(RowVertexCount - 1);
+			const FVector WorldPosition = FMath::Lerp(WorldLeft, WorldRight, ColumnAlpha);
+			const float Across = FMath::Lerp(-HalfWidth, HalfWidth, ColumnAlpha);
+			VertexIDs.Add(Mesh.AppendVertex(FVector3d(
+				WorldToMesh.TransformPosition(WorldPosition))));
+			NormalIDs.Add(Attributes.Normals->AppendElement(LocalNormal));
+			UV0IDs.Add(Attributes.UV0->AppendElement(FVector2f(
+				ColumnAlpha * BaseUVScale.X,
+				Sample.NormalizedDistance * BaseUVScale.Y)));
+			UV1IDs.Add(Attributes.UV1->AppendElement(FVector2f(
+				Across * BaseUVScale.X, Sample.Distance * BaseUVScale.Y)));
 			UV2IDs.Add(Attributes.UV2->AppendElement(UV2));
+			UV3IDs.Add(Attributes.UV3->AppendElement(UV3));
 			ColorIDs.Add(Attributes.Colors->AppendElement(Color));
 		}
 	}
 
 	for (int32 SegmentIndex = 0; SegmentIndex < SegmentCount; ++SegmentIndex)
 	{
-		const int32 Left0 = SegmentIndex * 2;
-		const int32 Right0 = Left0 + 1;
-		const int32 Left1 = Left0 + 2;
-		const int32 Right1 = Left0 + 3;
-		const FIndex3i CornersA(Left0, Left1, Right0);
-		const FIndex3i CornersB(Right0, Left1, Right1);
-		const int32 TriangleA = Mesh.AppendTriangle(
-			VertexIDs[CornersA.A], VertexIDs[CornersA.B], VertexIDs[CornersA.C]);
-		const int32 TriangleB = Mesh.AppendTriangle(
-			VertexIDs[CornersB.A], VertexIDs[CornersB.B], VertexIDs[CornersB.C]);
-		SetTriangleAttributes(Attributes, TriangleA, CornersA,
-			NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
-		SetTriangleAttributes(Attributes, TriangleB, CornersB,
-			NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
+		for (int32 ColumnIndex = 0; ColumnIndex < RowVertexCount - 1; ++ColumnIndex)
+		{
+			const int32 Left0 = SegmentIndex * RowVertexCount + ColumnIndex;
+			const int32 Right0 = Left0 + 1;
+			const int32 Left1 = Left0 + RowVertexCount;
+			const int32 Right1 = Left1 + 1;
+			const FIndex3i CornersA(Left0, Left1, Right0);
+			const FIndex3i CornersB(Right0, Left1, Right1);
+			const int32 TriangleA = Mesh.AppendTriangle(
+				VertexIDs[CornersA.A], VertexIDs[CornersA.B], VertexIDs[CornersA.C]);
+			const int32 TriangleB = Mesh.AppendTriangle(
+				VertexIDs[CornersB.A], VertexIDs[CornersB.B], VertexIDs[CornersB.C]);
+			SetTriangleAttributes(Attributes, TriangleA, CornersA,
+				NormalIDs, UV0IDs, UV1IDs, UV2IDs, UV3IDs, ColorIDs, MaterialSlot);
+			SetTriangleAttributes(Attributes, TriangleB, CornersB,
+				NormalIDs, UV0IDs, UV1IDs, UV2IDs, UV3IDs, ColorIDs, MaterialSlot);
+		}
 	}
 
 	return true;
@@ -372,7 +417,9 @@ bool AppendSplash(
 	float FrontRadius,
 	float BackRadius,
 	int32 RadialSegments,
-	int32 Rings)
+	int32 Rings,
+	float UVSeed,
+	float TopSplinePosition)
 {
 	FVector WorldNormal = Endpoint.Normal.GetSafeNormal();
 	if (WorldNormal.IsNearlyZero())
@@ -407,16 +454,15 @@ bool AppendSplash(
 	const FVector WorldCenter = Endpoint.Position + WorldNormal;
 	const FVector3f LocalNormal = FVector3f(
 		WorldToMesh.TransformVectorNoScale(WorldNormal).GetSafeNormal());
-	const FVector2f SharedUV1(Endpoint.Distance, Endpoint.NormalizedDistance);
-	const FVector2f SharedUV2(Endpoint.Speed / 1000.0f, Endpoint.Turbulence);
-	const FVector4f SharedColor(
-		Endpoint.Turbulence, Endpoint.Impact, Endpoint.RandomValue, 1.0f);
+	const FVector2f SharedUV2(Endpoint.Speed, Endpoint.Flow);
+	const FVector2f SharedUV3(UVSeed, TopSplinePosition);
 
 	TArray<int32> VertexIDs;
 	TArray<int32> NormalIDs;
 	TArray<int32> UV0IDs;
 	TArray<int32> UV1IDs;
 	TArray<int32> UV2IDs;
+	TArray<int32> UV3IDs;
 	TArray<int32> ColorIDs;
 	const int32 VertexCount = 1 + Rings * RadialSegments;
 	VertexIDs.Reserve(VertexCount);
@@ -424,6 +470,7 @@ bool AppendSplash(
 	UV0IDs.Reserve(VertexCount);
 	UV1IDs.Reserve(VertexCount);
 	UV2IDs.Reserve(VertexCount);
+	UV3IDs.Reserve(VertexCount);
 	ColorIDs.Reserve(VertexCount);
 
 	auto AppendVertex = [&](const FVector& WorldPosition, const FVector2f& UV0)
@@ -432,9 +479,16 @@ bool AppendSplash(
 			WorldToMesh.TransformPosition(WorldPosition))));
 		NormalIDs.Add(Attributes.Normals->AppendElement(LocalNormal));
 		UV0IDs.Add(Attributes.UV0->AppendElement(UV0));
-		UV1IDs.Add(Attributes.UV1->AppendElement(SharedUV1));
+		const FVector Offset = WorldPosition - WorldCenter;
+		UV1IDs.Add(Attributes.UV1->AppendElement(FVector2f(
+			FVector::DotProduct(Offset, WorldAcross),
+			FVector::DotProduct(Offset, WorldForward))));
 		UV2IDs.Add(Attributes.UV2->AppendElement(SharedUV2));
-		ColorIDs.Add(Attributes.Colors->AppendElement(SharedColor));
+		UV3IDs.Add(Attributes.UV3->AppendElement(SharedUV3));
+		const FVector ColorDirection = Offset.IsNearlyZero()
+			? Endpoint.Velocity : Offset;
+		ColorIDs.Add(Attributes.Colors->AppendElement(
+			MakeWaterfallVertexColor(ColorDirection, Endpoint.Turbulence)));
 	};
 
 	AppendVertex(WorldCenter, FVector2f(0.5f, 0.5f));
@@ -467,7 +521,8 @@ bool AppendSplash(
 		const int32 TriangleID = Mesh.AppendTriangle(
 			VertexIDs[Corners.A], VertexIDs[Corners.B], VertexIDs[Corners.C]);
 		SetTriangleAttributes(Attributes, TriangleID, Corners,
-			NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
+			NormalIDs, UV0IDs, UV1IDs, UV2IDs, UV3IDs, ColorIDs,
+			EWaterfallMaterialSlot::Splash);
 	}
 
 	for (int32 RingIndex = 1; RingIndex < Rings; ++RingIndex)
@@ -488,9 +543,11 @@ bool AppendSplash(
 			const int32 TriangleB = Mesh.AppendTriangle(
 				VertexIDs[CornersB.A], VertexIDs[CornersB.B], VertexIDs[CornersB.C]);
 			SetTriangleAttributes(Attributes, TriangleA, CornersA,
-				NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
+				NormalIDs, UV0IDs, UV1IDs, UV2IDs, UV3IDs, ColorIDs,
+				EWaterfallMaterialSlot::Splash);
 			SetTriangleAttributes(Attributes, TriangleB, CornersB,
-				NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
+				NormalIDs, UV0IDs, UV1IDs, UV2IDs, UV3IDs, ColorIDs,
+				EWaterfallMaterialSlot::Splash);
 		}
 	}
 
@@ -518,7 +575,9 @@ bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 	bool bGenerateSplash,
 	float RibbonWidth,
 	float CrossWidth,
-	float UVLength,
+	int32 PerPathSubdivisions,
+	int32 CrossSubdivisions,
+	FVector2D BaseUVScale,
 	float FrontRadius,
 	float BackRadius,
 	int32 RadialSegments,
@@ -539,7 +598,6 @@ bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 	const FTransform WorldToMesh = GetComponentTransform().Inverse();
 	const float SafeRibbonWidth = FMath::Max(RibbonWidth, 1.0f);
 	const float SafeCrossWidth = FMath::Max(CrossWidth, 1.0f);
-	const float SafeUVLength = FMath::Max(UVLength, 1.0f);
 	const float SafeFrontRadius = FMath::Max(FrontRadius, 1.0f);
 	const float SafeBackRadius = FMath::Max(BackRadius, 1.0f);
 	const int32 SafeRadialSegments = FMath::Clamp(RadialSegments, 3, 128);
@@ -551,7 +609,7 @@ bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 	if (bGenerateSingular)
 	{
 		BuiltSurfaceCount += AppendSingular(NewMesh, Attributes, Paths,
-			WorldToMesh, WorldWidthAxis, SafeUVLength) ? 1 : 0;
+			WorldToMesh, WorldWidthAxis, BaseUVScale) ? 1 : 0;
 	}
 
 	if (bGeneratePerPath)
@@ -565,7 +623,9 @@ bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 
 			BuiltSurfaceCount += AppendRibbon(NewMesh, Attributes,
 				Path->GetResampledSamples(), WorldToMesh, WorldWidthAxis,
-				SafeRibbonWidth, SafeUVLength, 0.0f) ? 1 : 0;
+				SafeRibbonWidth, PerPathSubdivisions, BaseUVScale, 0.0f, Path->GetUVSeed(),
+				Path->GetNormalizedTopSplinePosition(),
+				EWaterfallMaterialSlot::PerPath) ? 1 : 0;
 		}
 	}
 
@@ -577,7 +637,9 @@ bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 			{
 				BuiltSurfaceCount += AppendRibbon(NewMesh, Attributes,
 					Path->GetResampledSamples(), WorldToMesh, WorldWidthAxis,
-					SafeCrossWidth, SafeUVLength, 90.0f) ? 1 : 0;
+					SafeCrossWidth, CrossSubdivisions, BaseUVScale, 90.0f, Path->GetUVSeed(),
+					Path->GetNormalizedTopSplinePosition(),
+					EWaterfallMaterialSlot::Cross) ? 1 : 0;
 			}
 		}
 	}
@@ -593,7 +655,8 @@ bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 
 			BuiltSurfaceCount += AppendSplash(NewMesh, Attributes,
 				Path->GetResampledSamples().Last(), WorldToMesh, WorldWidthAxis,
-				SafeFrontRadius, SafeBackRadius, SafeRadialSegments, SafeRings) ? 1 : 0;
+				SafeFrontRadius, SafeBackRadius, SafeRadialSegments,
+				SafeRings, Path->GetUVSeed(), Path->GetNormalizedTopSplinePosition()) ? 1 : 0;
 		}
 	}
 

@@ -76,6 +76,9 @@ public:
 	bool BuildResampledSamples(float SampleSpacing);
 	const TArray<FTYWaterfallSample>& GetResampledSamples() const { return ResampledSamples; }
 	void SetSampleSeed(int32 InSeed) { SampleSeed = InSeed; }
+	float GetUVSeed() const { return FRandomStream(SampleSeed).GetFraction(); }
+	float GetNormalizedTopSplinePosition() const { return NormalizedTopSplinePosition; }
+	float GetTopSplineDistance() const { return TopSplineDistance; }
 	void SetPathDebugColor(const FLinearColor& InColor);
 #endif
 
@@ -112,8 +115,15 @@ protected:
 	UPROPERTY(Transient)
 	TArray<FTYWaterfallSample> ResampledSamples;
 
-	UPROPERTY(Transient)
+	/** Persisted so regenerating a mesh after reopening the level preserves UV3. */
+	UPROPERTY()
 	int32 SampleSeed = 0;
+
+	UPROPERTY()
+	float NormalizedTopSplinePosition = 0.0f;
+
+	UPROPERTY()
+	float TopSplineDistance = 0.0f;
 
 	UPROPERTY(VisibleAnywhere, Category = "Simulation")
 	bool bSimulationComplete = false;

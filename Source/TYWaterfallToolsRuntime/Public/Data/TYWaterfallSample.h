@@ -32,6 +32,10 @@ struct TYWATERFALLTOOLSRUNTIME_API FTYWaterfallSample
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Waterfall|Sample")
 	float Speed = 0.0f;
 
+	/** Accumulated travel time in seconds, used as the material flow coordinate. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Waterfall|Sample")
+	float Flow = 0.0f;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Waterfall|Sample")
 	float Impact = 0.0f;
 
