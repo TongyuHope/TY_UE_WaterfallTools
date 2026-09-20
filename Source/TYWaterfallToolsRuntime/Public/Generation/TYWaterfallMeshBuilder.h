@@ -12,7 +12,7 @@ struct TYWATERFALLTOOLSRUNTIME_API FTYWaterfallMeshBuilder
 #if WITH_EDITOR
 public:
 	void Initialize(ATYWaterfallActor* InOwner);
-	bool BuildPerPathMesh();
+	bool BuildMesh();
 	void ClearMesh();
 
 private:

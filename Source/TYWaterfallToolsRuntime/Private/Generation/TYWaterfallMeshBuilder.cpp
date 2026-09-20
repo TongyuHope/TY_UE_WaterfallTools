@@ -19,7 +19,7 @@ void FTYWaterfallMeshBuilder::Initialize(ATYWaterfallActor* InOwner)
 	Owner = InOwner;
 }
 
-bool FTYWaterfallMeshBuilder::BuildPerPathMesh()
+bool FTYWaterfallMeshBuilder::BuildMesh()
 {
 	ATYWaterfallActor* Waterfall = Owner.Get();
 	if (!IsValid(Waterfall) || !IsValid(Waterfall->DynamicMeshComponent)
@@ -42,12 +42,16 @@ bool FTYWaterfallMeshBuilder::BuildPerPathMesh()
 
 	const FVector WidthAxis = Waterfall->TopSpline->GetDirectionAtTime(
 		0.5f, ESplineCoordinateSpace::World, true).GetSafeNormal();
-	const bool bBuilt = Waterfall->DynamicMeshComponent->BuildPerPathRibbons(
+	const bool bBuilt = Waterfall->DynamicMeshComponent->BuildCombinedMesh(
 		Waterfall->GeneratedPaths,
 		WidthAxis,
 		Waterfall->WaterfallSettings->GetRibbonWidth(),
-		Waterfall->WaterfallSettings->GetMeshSampleSpacing(),
-		Waterfall->WaterfallSettings->GetMeshUVLength());
+		Waterfall->WaterfallSettings->GetCrossWidth(),
+		Waterfall->WaterfallSettings->GetMeshUVLength(),
+		Waterfall->WaterfallSettings->GetSplashFrontRadius(),
+		Waterfall->WaterfallSettings->GetSplashBackRadius(),
+		Waterfall->WaterfallSettings->GetSplashRadialSegments(),
+		Waterfall->WaterfallSettings->GetSplashRings());
 
 	if (bBuilt)
 	{

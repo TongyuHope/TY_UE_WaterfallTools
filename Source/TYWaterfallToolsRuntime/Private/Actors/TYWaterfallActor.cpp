@@ -118,9 +118,14 @@ void ATYWaterfallActor::ClearGeneratedPaths()
 	PathBuilder.ClearGeneratedPaths();
 }
 
+void ATYWaterfallActor::GenerateMesh()
+{
+	MeshBuilder.BuildMesh();
+}
+
 void ATYWaterfallActor::GeneratePerPathMesh()
 {
-	MeshBuilder.BuildPerPathMesh();
+	GenerateMesh();
 }
 
 void ATYWaterfallActor::ClearDynamicMesh()

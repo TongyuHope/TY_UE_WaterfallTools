@@ -8,7 +8,7 @@
 
 class UTYWaterfallPathComponent;
 
-/** Dynamic mesh component that stores the generated per-path waterfall ribbons. */
+/** Dynamic mesh component that stores the combined waterfall representation. */
 UCLASS(ClassGroup = (Waterfall), meta = (DisplayName = "TY Waterfall Mesh"))
 class TYWATERFALLTOOLSRUNTIME_API UTYWaterfallMeshComponent : public UDynamicMeshComponent
 {
@@ -18,13 +18,17 @@ public:
 	UTYWaterfallMeshComponent(const FObjectInitializer& ObjectInitializer);
 
 #if WITH_EDITOR
-	/** Replaces the current mesh with one ribbon for every valid path. */
-	bool BuildPerPathRibbons(
+	/** Replaces the mesh with Per Path ribbons, Cross planes and endpoint splashes. */
+	bool BuildCombinedMesh(
 		const TArray<TObjectPtr<UTYWaterfallPathComponent>>& Paths,
 		FVector WorldWidthAxis,
 		float RibbonWidth,
-		float SampleSpacing,
-		float UVLength);
+		float CrossWidth,
+		float UVLength,
+		float FrontRadius,
+		float BackRadius,
+		int32 RadialSegments,
+		int32 Rings);
 
 	void ClearWaterfallMesh();
 #endif

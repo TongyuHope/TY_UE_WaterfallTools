@@ -57,8 +57,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Waterfall|Simulation")
 	float GetPathGenerationProgress() const { return PathBuilder.GetProgress(); }
 
-	/** Converts all completed path splines into one distance-sampled ribbon mesh. */
+	/** Converts all completed paths into the combined waterfall mesh. */
 	UFUNCTION(CallInEditor, Category = "Waterfall|Mesh")
+	void GenerateMesh();
+
+	/** Compatibility entry point retained for existing editor scripts and assets. */
+	UFUNCTION(BlueprintCallable, Category = "Waterfall|Mesh",
+		meta = (DeprecatedFunction, DeprecationMessage = "Use GenerateMesh instead."))
 	void GeneratePerPathMesh();
 
 	/** Removes the generated dynamic mesh without deleting the source paths. */

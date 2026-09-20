@@ -34,8 +34,13 @@ public:
 	int32 GetMaxSteps() const { return FMath::Max(MaxSteps, 1); }
 	float GetTerminationHeight() const { return TerminationHeight; }
 	float GetRibbonWidth() const { return FMath::Max(RibbonWidth, 1.0f); }
+	float GetCrossWidth() const { return FMath::Max(CrossWidth, 1.0f); }
 	float GetMeshSampleSpacing() const { return FMath::Max(MeshSampleSpacing, 1.0f); }
 	float GetMeshUVLength() const { return FMath::Max(MeshUVLength, 1.0f); }
+	float GetSplashFrontRadius() const { return FMath::Max(SplashFrontRadius, 1.0f); }
+	float GetSplashBackRadius() const { return FMath::Max(SplashBackRadius, 1.0f); }
+	int32 GetSplashRadialSegments() const { return FMath::Clamp(SplashRadialSegments, 3, 128); }
+	int32 GetSplashRings() const { return FMath::Clamp(SplashRings, 1, 32); }
 	UMaterialInterface* GetWaterfallMaterial() const { return WaterfallMaterial; }
 	bool ShouldShowPathDebug() const { return bShowPathDebug; }
 	bool ShouldShowMeshWireframe() const { return bShowMeshWireframe; }
@@ -79,9 +84,13 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Simulation")
 	float TerminationHeight = -1000.0f;
 
-	/** Total width of every generated ribbon, measured in Unreal units. */
+	/** Total width of every generated Per Path ribbon, measured in Unreal units. */
 	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
 	float RibbonWidth = 50.0f;
+
+	/** Width of the perpendicular Cross plane generated along every path. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
+	float CrossWidth = 50.0f;
 
 	/** Target distance between adjacent ribbon rows. Smaller values create denser meshes. */
 	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
@@ -91,7 +100,23 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
 	float MeshUVLength = 200.0f;
 
-	/** Optional material assigned to slot 0 after the ribbons are generated. */
+	/** Distance the splash extends in the incoming flow direction. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
+	float SplashFrontRadius = 300.0f;
+
+	/** Distance the splash extends behind the path endpoint. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
+	float SplashBackRadius = 75.0f;
+
+	/** Number of vertices around each splash ring. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "3", ClampMax = "128"))
+	int32 SplashRadialSegments = 16;
+
+	/** Number of concentric rings between the endpoint and splash perimeter. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1", ClampMax = "32"))
+	int32 SplashRings = 4;
+
+	/** Optional material assigned to all generated surfaces in slot 0. */
 	UPROPERTY(EditAnywhere, Category = "Material")
 	TObjectPtr<UMaterialInterface> WaterfallMaterial;
 
@@ -101,7 +126,7 @@ protected:
 
 	/** Show each generated path as a spline with its own stable debug color. */
 	UPROPERTY(EditAnywhere, Category = "Debug")
-	bool bShowPathDebug = false;
+	bool bShowPathDebug = true;
 
 	/** Draw the generated mesh triangle edges and vertices while authoring. */
 	UPROPERTY(EditAnywhere, Category = "Debug")

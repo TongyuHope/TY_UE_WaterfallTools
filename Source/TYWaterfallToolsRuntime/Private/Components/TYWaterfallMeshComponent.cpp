@@ -8,6 +8,292 @@
 
 using namespace UE::Geometry;
 
+namespace
+{
+struct FWaterfallMeshAttributes
+{
+	FDynamicMeshNormalOverlay* Normals = nullptr;
+	FDynamicMeshUVOverlay* UV0 = nullptr;
+	FDynamicMeshUVOverlay* UV1 = nullptr;
+	FDynamicMeshUVOverlay* UV2 = nullptr;
+	FDynamicMeshColorOverlay* Colors = nullptr;
+};
+
+FWaterfallMeshAttributes InitializeAttributes(FDynamicMesh3& Mesh)
+{
+	Mesh.EnableAttributes();
+	Mesh.Attributes()->SetNumUVLayers(3);
+	Mesh.Attributes()->EnablePrimaryColors();
+	return {
+		Mesh.Attributes()->PrimaryNormals(),
+		Mesh.Attributes()->GetUVLayer(0),
+		Mesh.Attributes()->GetUVLayer(1),
+		Mesh.Attributes()->GetUVLayer(2),
+		Mesh.Attributes()->PrimaryColors()
+	};
+}
+
+void SetTriangleAttributes(
+	const FWaterfallMeshAttributes& Attributes,
+	int32 TriangleID,
+	const FIndex3i& Corners,
+	const TArray<int32>& NormalIDs,
+	const TArray<int32>& UV0IDs,
+	const TArray<int32>& UV1IDs,
+	const TArray<int32>& UV2IDs,
+	const TArray<int32>& ColorIDs)
+{
+	if (TriangleID < 0)
+	{
+		return;
+	}
+
+	auto Remap = [&Corners](const TArray<int32>& IDs)
+	{
+		return FIndex3i(IDs[Corners.A], IDs[Corners.B], IDs[Corners.C]);
+	};
+
+	Attributes.Normals->SetTriangle(TriangleID, Remap(NormalIDs));
+	Attributes.UV0->SetTriangle(TriangleID, Remap(UV0IDs));
+	Attributes.UV1->SetTriangle(TriangleID, Remap(UV1IDs));
+	Attributes.UV2->SetTriangle(TriangleID, Remap(UV2IDs));
+	Attributes.Colors->SetTriangle(TriangleID, Remap(ColorIDs));
+}
+
+bool AppendRibbon(
+	FDynamicMesh3& Mesh,
+	const FWaterfallMeshAttributes& Attributes,
+	const TArray<FTYWaterfallSample>& Samples,
+	const FTransform& WorldToMesh,
+	FVector WorldWidthAxis,
+	float Width,
+	float UVLength,
+	float RotationDegrees)
+{
+	if (Samples.Num() < 2 || Samples.Last().Distance <= KINDA_SMALL_NUMBER)
+	{
+		return false;
+	}
+
+	const int32 SegmentCount = Samples.Num() - 1;
+	TArray<int32> VertexIDs;
+	TArray<int32> NormalIDs;
+	TArray<int32> UV0IDs;
+	TArray<int32> UV1IDs;
+	TArray<int32> UV2IDs;
+	TArray<int32> ColorIDs;
+	VertexIDs.Reserve(Samples.Num() * 2);
+	NormalIDs.Reserve(Samples.Num() * 2);
+	UV0IDs.Reserve(Samples.Num() * 2);
+	UV1IDs.Reserve(Samples.Num() * 2);
+	UV2IDs.Reserve(Samples.Num() * 2);
+	ColorIDs.Reserve(Samples.Num() * 2);
+
+	for (const FTYWaterfallSample& Sample : Samples)
+	{
+		const FVector WorldTangent = Sample.Tangent.GetSafeNormal();
+		FVector WorldAcross = FVector::VectorPlaneProject(
+			WorldWidthAxis, WorldTangent).GetSafeNormal();
+		if (WorldAcross.IsNearlyZero())
+		{
+			WorldAcross = FVector::CrossProduct(
+				WorldTangent, FVector::UpVector).GetSafeNormal();
+		}
+		if (WorldAcross.IsNearlyZero())
+		{
+			WorldAcross = FVector::RightVector;
+		}
+
+		// Cross mode rotates a second copy around the local flow direction. Both
+		// copies retain independent vertices so each plane has a stable normal.
+		WorldAcross = WorldAcross.RotateAngleAxis(RotationDegrees, WorldTangent);
+		const FVector WorldNormal = FVector::CrossProduct(
+			WorldAcross, WorldTangent).GetSafeNormal();
+		const FVector HalfWidthOffset = WorldAcross * (Width * 0.5f);
+		const FVector LocalLeft = WorldToMesh.TransformPosition(
+			Sample.Position - HalfWidthOffset);
+		const FVector LocalRight = WorldToMesh.TransformPosition(
+			Sample.Position + HalfWidthOffset);
+		const FVector3f LocalNormal = FVector3f(
+			WorldToMesh.TransformVectorNoScale(WorldNormal).GetSafeNormal());
+
+		VertexIDs.Add(Mesh.AppendVertex(FVector3d(LocalLeft)));
+		VertexIDs.Add(Mesh.AppendVertex(FVector3d(LocalRight)));
+		NormalIDs.Add(Attributes.Normals->AppendElement(LocalNormal));
+		NormalIDs.Add(Attributes.Normals->AppendElement(LocalNormal));
+		UV0IDs.Add(Attributes.UV0->AppendElement(FVector2f(
+			0.0f, Sample.Distance / UVLength)));
+		UV0IDs.Add(Attributes.UV0->AppendElement(FVector2f(
+			1.0f, Sample.Distance / UVLength)));
+
+		const FVector2f UV1(Sample.Distance, Sample.NormalizedDistance);
+		const FVector2f UV2(Sample.Speed / 1000.0f, Sample.Turbulence);
+		const FVector4f Color(
+			Sample.Turbulence, Sample.Impact, Sample.RandomValue, 1.0f);
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			UV1IDs.Add(Attributes.UV1->AppendElement(UV1));
+			UV2IDs.Add(Attributes.UV2->AppendElement(UV2));
+			ColorIDs.Add(Attributes.Colors->AppendElement(Color));
+		}
+	}
+
+	for (int32 SegmentIndex = 0; SegmentIndex < SegmentCount; ++SegmentIndex)
+	{
+		const int32 Left0 = SegmentIndex * 2;
+		const int32 Right0 = Left0 + 1;
+		const int32 Left1 = Left0 + 2;
+		const int32 Right1 = Left0 + 3;
+		const FIndex3i CornersA(Left0, Left1, Right0);
+		const FIndex3i CornersB(Right0, Left1, Right1);
+		const int32 TriangleA = Mesh.AppendTriangle(
+			VertexIDs[CornersA.A], VertexIDs[CornersA.B], VertexIDs[CornersA.C]);
+		const int32 TriangleB = Mesh.AppendTriangle(
+			VertexIDs[CornersB.A], VertexIDs[CornersB.B], VertexIDs[CornersB.C]);
+		SetTriangleAttributes(Attributes, TriangleA, CornersA,
+			NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
+		SetTriangleAttributes(Attributes, TriangleB, CornersB,
+			NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
+	}
+
+	return true;
+}
+
+bool AppendSplash(
+	FDynamicMesh3& Mesh,
+	const FWaterfallMeshAttributes& Attributes,
+	const FTYWaterfallSample& Endpoint,
+	const FTransform& WorldToMesh,
+	FVector WorldWidthAxis,
+	float FrontRadius,
+	float BackRadius,
+	int32 RadialSegments,
+	int32 Rings)
+{
+	FVector WorldNormal = Endpoint.Normal.GetSafeNormal();
+	if (WorldNormal.IsNearlyZero())
+	{
+		WorldNormal = FVector::UpVector;
+	}
+
+	// The terminal tangent determines the long axis of the splash. Projecting it
+	// onto the contact plane keeps the mesh flat even when the path ends steeply.
+	FVector WorldForward = FVector::VectorPlaneProject(
+		Endpoint.Tangent, WorldNormal).GetSafeNormal();
+	if (WorldForward.IsNearlyZero())
+	{
+		WorldForward = FVector::VectorPlaneProject(
+			WorldWidthAxis, WorldNormal).GetSafeNormal();
+	}
+	if (WorldForward.IsNearlyZero())
+	{
+		WorldForward = FVector::ForwardVector;
+	}
+	FVector WorldAcross = FVector::CrossProduct(
+		WorldNormal, WorldForward).GetSafeNormal();
+	if (WorldAcross.IsNearlyZero())
+	{
+		return false;
+	}
+	WorldForward = FVector::CrossProduct(WorldAcross, WorldNormal).GetSafeNormal();
+
+	const float HalfLongRadius = (FrontRadius + BackRadius) * 0.5f;
+	const float CenterOffset = (FrontRadius - BackRadius) * 0.5f;
+	const float SideRadius = HalfLongRadius;
+	const FVector WorldCenter = Endpoint.Position + WorldNormal;
+	const FVector3f LocalNormal = FVector3f(
+		WorldToMesh.TransformVectorNoScale(WorldNormal).GetSafeNormal());
+	const FVector2f SharedUV1(Endpoint.Distance, Endpoint.NormalizedDistance);
+	const FVector2f SharedUV2(Endpoint.Speed / 1000.0f, Endpoint.Turbulence);
+	const FVector4f SharedColor(
+		Endpoint.Turbulence, Endpoint.Impact, Endpoint.RandomValue, 1.0f);
+
+	TArray<int32> VertexIDs;
+	TArray<int32> NormalIDs;
+	TArray<int32> UV0IDs;
+	TArray<int32> UV1IDs;
+	TArray<int32> UV2IDs;
+	TArray<int32> ColorIDs;
+	const int32 VertexCount = 1 + Rings * RadialSegments;
+	VertexIDs.Reserve(VertexCount);
+	NormalIDs.Reserve(VertexCount);
+	UV0IDs.Reserve(VertexCount);
+	UV1IDs.Reserve(VertexCount);
+	UV2IDs.Reserve(VertexCount);
+	ColorIDs.Reserve(VertexCount);
+
+	auto AppendVertex = [&](const FVector& WorldPosition, const FVector2f& UV0)
+	{
+		VertexIDs.Add(Mesh.AppendVertex(FVector3d(
+			WorldToMesh.TransformPosition(WorldPosition))));
+		NormalIDs.Add(Attributes.Normals->AppendElement(LocalNormal));
+		UV0IDs.Add(Attributes.UV0->AppendElement(UV0));
+		UV1IDs.Add(Attributes.UV1->AppendElement(SharedUV1));
+		UV2IDs.Add(Attributes.UV2->AppendElement(SharedUV2));
+		ColorIDs.Add(Attributes.Colors->AppendElement(SharedColor));
+	};
+
+	AppendVertex(WorldCenter, FVector2f(0.5f, 0.5f));
+	for (int32 RingIndex = 1; RingIndex <= Rings; ++RingIndex)
+	{
+		const float RingAlpha = static_cast<float>(RingIndex) / Rings;
+		for (int32 SegmentIndex = 0; SegmentIndex < RadialSegments; ++SegmentIndex)
+		{
+			const float Angle = UE_TWO_PI * static_cast<float>(SegmentIndex)
+				/ RadialSegments;
+			const float CosAngle = FMath::Cos(Angle);
+			const float SinAngle = FMath::Sin(Angle);
+			const FVector RadialOffset =
+				WorldForward * (CenterOffset + CosAngle * HalfLongRadius)
+				+ WorldAcross * (SinAngle * SideRadius);
+			const FVector2f UV0(
+				0.5f + CosAngle * RingAlpha * 0.5f,
+				0.5f + SinAngle * RingAlpha * 0.5f);
+			AppendVertex(WorldCenter + RadialOffset * RingAlpha, UV0);
+		}
+	}
+
+	// Match the visible winding already validated for the per-path ribbons while
+	// keeping the authored overlay normal pointed away from the contact surface.
+	for (int32 SegmentIndex = 0; SegmentIndex < RadialSegments; ++SegmentIndex)
+	{
+		const int32 Current = 1 + SegmentIndex;
+		const int32 Next = 1 + (SegmentIndex + 1) % RadialSegments;
+		const FIndex3i Corners(0, Next, Current);
+		const int32 TriangleID = Mesh.AppendTriangle(
+			VertexIDs[Corners.A], VertexIDs[Corners.B], VertexIDs[Corners.C]);
+		SetTriangleAttributes(Attributes, TriangleID, Corners,
+			NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
+	}
+
+	for (int32 RingIndex = 1; RingIndex < Rings; ++RingIndex)
+	{
+		const int32 InnerStart = 1 + (RingIndex - 1) * RadialSegments;
+		const int32 OuterStart = 1 + RingIndex * RadialSegments;
+		for (int32 SegmentIndex = 0; SegmentIndex < RadialSegments; ++SegmentIndex)
+		{
+			const int32 NextSegment = (SegmentIndex + 1) % RadialSegments;
+			const int32 InnerCurrent = InnerStart + SegmentIndex;
+			const int32 InnerNext = InnerStart + NextSegment;
+			const int32 OuterCurrent = OuterStart + SegmentIndex;
+			const int32 OuterNext = OuterStart + NextSegment;
+			const FIndex3i CornersA(InnerCurrent, OuterNext, OuterCurrent);
+			const FIndex3i CornersB(InnerCurrent, InnerNext, OuterNext);
+			const int32 TriangleA = Mesh.AppendTriangle(
+				VertexIDs[CornersA.A], VertexIDs[CornersA.B], VertexIDs[CornersA.C]);
+			const int32 TriangleB = Mesh.AppendTriangle(
+				VertexIDs[CornersB.A], VertexIDs[CornersB.B], VertexIDs[CornersB.C]);
+			SetTriangleAttributes(Attributes, TriangleA, CornersA,
+				NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
+			SetTriangleAttributes(Attributes, TriangleB, CornersB,
+				NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
+		}
+	}
+
+	return true;
+}
+}
+
 UTYWaterfallMeshComponent::UTYWaterfallMeshComponent(
 	const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -19,15 +305,17 @@ UTYWaterfallMeshComponent::UTYWaterfallMeshComponent(
 }
 
 #if WITH_EDITOR
-bool UTYWaterfallMeshComponent::BuildPerPathRibbons(
+bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 	const TArray<TObjectPtr<UTYWaterfallPathComponent>>& Paths,
 	FVector WorldWidthAxis,
 	float RibbonWidth,
-	float SampleSpacing,
-	float UVLength)
+	float CrossWidth,
+	float UVLength,
+	float FrontRadius,
+	float BackRadius,
+	int32 RadialSegments,
+	int32 Rings)
 {
-	const float SafeWidth = FMath::Max(RibbonWidth, 1.0f);
-	const float SafeUVLength = FMath::Max(UVLength, 1.0f);
 	WorldWidthAxis = WorldWidthAxis.GetSafeNormal();
 	if (WorldWidthAxis.IsNearlyZero())
 	{
@@ -35,150 +323,59 @@ bool UTYWaterfallMeshComponent::BuildPerPathRibbons(
 	}
 
 	FDynamicMesh3 NewMesh;
-	NewMesh.EnableAttributes();
-	NewMesh.Attributes()->SetNumUVLayers(3);
-	NewMesh.Attributes()->EnablePrimaryColors();
-	FDynamicMeshNormalOverlay* NormalOverlay = NewMesh.Attributes()->PrimaryNormals();
-	FDynamicMeshUVOverlay* UV0Overlay = NewMesh.Attributes()->GetUVLayer(0);
-	FDynamicMeshUVOverlay* UV1Overlay = NewMesh.Attributes()->GetUVLayer(1);
-	FDynamicMeshUVOverlay* UV2Overlay = NewMesh.Attributes()->GetUVLayer(2);
-	FDynamicMeshColorOverlay* ColorOverlay = NewMesh.Attributes()->PrimaryColors();
+	const FWaterfallMeshAttributes Attributes = InitializeAttributes(NewMesh);
 	const FTransform WorldToMesh = GetComponentTransform().Inverse();
-	int32 BuiltRibbonCount = 0;
+	const float SafeRibbonWidth = FMath::Max(RibbonWidth, 1.0f);
+	const float SafeCrossWidth = FMath::Max(CrossWidth, 1.0f);
+	const float SafeUVLength = FMath::Max(UVLength, 1.0f);
+	const float SafeFrontRadius = FMath::Max(FrontRadius, 1.0f);
+	const float SafeBackRadius = FMath::Max(BackRadius, 1.0f);
+	const int32 SafeRadialSegments = FMath::Clamp(RadialSegments, 3, 128);
+	const int32 SafeRings = FMath::Clamp(Rings, 1, 32);
+	int32 BuiltSurfaceCount = 0;
 
+	// Pass 1 builds the validated water-surface ribbon for every path.
 	for (const UTYWaterfallPathComponent* Path : Paths)
 	{
-		if (!IsValid(Path) || Path->GetResampledSamples().Num() < 2)
+		if (!IsValid(Path))
 		{
 			continue;
 		}
 
 		const TArray<FTYWaterfallSample>& Samples = Path->GetResampledSamples();
-		const float PathLength = Samples.Last().Distance;
-		if (PathLength <= KINDA_SMALL_NUMBER)
+		BuiltSurfaceCount += AppendRibbon(NewMesh, Attributes, Samples,
+			WorldToMesh, WorldWidthAxis, SafeRibbonWidth, SafeUVLength, 0.0f) ? 1 : 0;
+	}
+
+	// Pass 2 adds only the perpendicular plane. Re-adding the zero-degree ribbon
+	// here would overlap Per Path exactly and cause depth flicker.
+	for (const UTYWaterfallPathComponent* Path : Paths)
+	{
+		if (IsValid(Path))
+		{
+			BuiltSurfaceCount += AppendRibbon(NewMesh, Attributes,
+				Path->GetResampledSamples(), WorldToMesh, WorldWidthAxis,
+				SafeCrossWidth, SafeUVLength, 90.0f) ? 1 : 0;
+		}
+	}
+
+	// Pass 3 finishes the combined mesh with one radial splash per endpoint.
+	for (const UTYWaterfallPathComponent* Path : Paths)
+	{
+		if (!IsValid(Path) || Path->GetResampledSamples().IsEmpty())
 		{
 			continue;
 		}
 
-		// Distance-based sampling produces stable geometry density even when the
-		// simulation itself generated unevenly spaced points after collisions.
-		const int32 SegmentCount = Samples.Num() - 1;
-		TArray<int32> VertexIDs;
-		TArray<int32> NormalIDs;
-		TArray<int32> UV0IDs;
-		TArray<int32> UV1IDs;
-		TArray<int32> UV2IDs;
-		TArray<int32> ColorIDs;
-		VertexIDs.Reserve((SegmentCount + 1) * 2);
-		NormalIDs.Reserve((SegmentCount + 1) * 2);
-		UV0IDs.Reserve((SegmentCount + 1) * 2);
-		UV1IDs.Reserve((SegmentCount + 1) * 2);
-		UV2IDs.Reserve((SegmentCount + 1) * 2);
-		ColorIDs.Reserve((SegmentCount + 1) * 2);
-
-		for (int32 SampleIndex = 0; SampleIndex <= SegmentCount; ++SampleIndex)
-		{
-			const FTYWaterfallSample& Sample = Samples[SampleIndex];
-			const float Distance = Sample.Distance;
-			const FVector WorldCenter = Sample.Position;
-			const FVector WorldTangent = Sample.Tangent.GetSafeNormal();
-
-			// Project the waterfall width axis onto the plane perpendicular to flow.
-			// This keeps the ribbon stable as a path turns from horizontal to vertical.
-			FVector WorldAcross = FVector::VectorPlaneProject(WorldWidthAxis, WorldTangent).GetSafeNormal();
-			if (WorldAcross.IsNearlyZero())
-			{
-				WorldAcross = FVector::CrossProduct(WorldTangent, FVector::UpVector).GetSafeNormal();
-			}
-			if (WorldAcross.IsNearlyZero())
-			{
-				WorldAcross = FVector::RightVector;
-			}
-
-			const FVector WorldNormal = FVector::CrossProduct(WorldAcross, WorldTangent).GetSafeNormal();
-			const FVector HalfWidthOffset = WorldAcross * (SafeWidth * 0.5f);
-			const FVector LocalLeft = WorldToMesh.TransformPosition(WorldCenter - HalfWidthOffset);
-			const FVector LocalRight = WorldToMesh.TransformPosition(WorldCenter + HalfWidthOffset);
-			const FVector3f LocalNormal = FVector3f(
-				WorldToMesh.TransformVectorNoScale(WorldNormal).GetSafeNormal());
-
-			VertexIDs.Add(NewMesh.AppendVertex(FVector3d(LocalLeft)));
-			VertexIDs.Add(NewMesh.AppendVertex(FVector3d(LocalRight)));
-			NormalIDs.Add(NormalOverlay->AppendElement(LocalNormal));
-			NormalIDs.Add(NormalOverlay->AppendElement(LocalNormal));
-			const FVector2f UV0Left(0.0f, Distance / SafeUVLength);
-			const FVector2f UV0Right(1.0f, Distance / SafeUVLength);
-			const FVector2f UV1(Distance, Sample.NormalizedDistance);
-			const FVector2f UV2(Sample.Speed / 1000.0f, Sample.Turbulence);
-			const FVector4f Color(Sample.Turbulence, Sample.Impact, Sample.RandomValue, 1.0f);
-			UV0IDs.Add(UV0Overlay->AppendElement(UV0Left));
-			UV0IDs.Add(UV0Overlay->AppendElement(UV0Right));
-			const int32 UV1Left = UV1Overlay->AppendElement(UV1);
-			const int32 UV1Right = UV1Overlay->AppendElement(UV1);
-			const int32 UV2Left = UV2Overlay->AppendElement(UV2);
-			const int32 UV2Right = UV2Overlay->AppendElement(UV2);
-			const int32 ColorLeft = ColorOverlay->AppendElement(Color);
-			const int32 ColorRight = ColorOverlay->AppendElement(Color);
-			UV1IDs.Add(UV1Left);
-			UV1IDs.Add(UV1Right);
-			UV2IDs.Add(UV2Left);
-			UV2IDs.Add(UV2Right);
-			ColorIDs.Add(ColorLeft);
-			ColorIDs.Add(ColorRight);
-		}
-
-		for (int32 SegmentIndex = 0; SegmentIndex < SegmentCount; ++SegmentIndex)
-		{
-			const int32 Left0 = SegmentIndex * 2;
-			const int32 Right0 = Left0 + 1;
-			const int32 Left1 = Left0 + 2;
-			const int32 Right1 = Left0 + 3;
-
-			// Unreal renders clockwise winding as the front face. Keep the authored
-			// normal pointing above the water surface, but wind both triangles so
-			// that same side is also the visible side for one-sided materials.
-			const FIndex3i TriangleA(
-				VertexIDs[Left0], VertexIDs[Left1], VertexIDs[Right0]);
-			const FIndex3i TriangleB(
-				VertexIDs[Right0], VertexIDs[Left1], VertexIDs[Right1]);
-			const int32 TriangleAID = NewMesh.AppendTriangle(TriangleA);
-			const int32 TriangleBID = NewMesh.AppendTriangle(TriangleB);
-
-			if (TriangleAID >= 0)
-			{
-				NormalOverlay->SetTriangle(TriangleAID, FIndex3i(
-					NormalIDs[Left0], NormalIDs[Left1], NormalIDs[Right0]));
-				UV0Overlay->SetTriangle(TriangleAID, FIndex3i(
-					UV0IDs[Left0], UV0IDs[Left1], UV0IDs[Right0]));
-				UV1Overlay->SetTriangle(TriangleAID, FIndex3i(
-					UV1IDs[Left0], UV1IDs[Left1], UV1IDs[Right0]));
-				UV2Overlay->SetTriangle(TriangleAID, FIndex3i(
-					UV2IDs[Left0], UV2IDs[Left1], UV2IDs[Right0]));
-				ColorOverlay->SetTriangle(TriangleAID, FIndex3i(
-					ColorIDs[Left0], ColorIDs[Left1], ColorIDs[Right0]));
-			}
-			if (TriangleBID >= 0)
-			{
-				NormalOverlay->SetTriangle(TriangleBID, FIndex3i(
-					NormalIDs[Right0], NormalIDs[Left1], NormalIDs[Right1]));
-				UV0Overlay->SetTriangle(TriangleBID, FIndex3i(
-					UV0IDs[Right0], UV0IDs[Left1], UV0IDs[Right1]));
-				UV1Overlay->SetTriangle(TriangleBID, FIndex3i(
-					UV1IDs[Right0], UV1IDs[Left1], UV1IDs[Right1]));
-				UV2Overlay->SetTriangle(TriangleBID, FIndex3i(
-					UV2IDs[Right0], UV2IDs[Left1], UV2IDs[Right1]));
-				ColorOverlay->SetTriangle(TriangleBID, FIndex3i(
-					ColorIDs[Right0], ColorIDs[Left1], ColorIDs[Right1]));
-			}
-		}
-
-		++BuiltRibbonCount;
+		BuiltSurfaceCount += AppendSplash(NewMesh, Attributes,
+			Path->GetResampledSamples().Last(), WorldToMesh, WorldWidthAxis,
+			SafeFrontRadius, SafeBackRadius, SafeRadialSegments, SafeRings) ? 1 : 0;
 	}
 
 	SetMesh(MoveTemp(NewMesh));
-	SetVisibility(BuiltRibbonCount > 0);
+	SetVisibility(BuiltSurfaceCount > 0);
 	MarkPackageDirty();
-	return BuiltRibbonCount > 0;
+	return BuiltSurfaceCount > 0;
 }
 
 void UTYWaterfallMeshComponent::ClearWaterfallMesh()

@@ -523,9 +523,19 @@ struct FTYWaterfallSample
 
 ### 推荐顺序
 
-- [ ] Cross：每条路径生成两个相交带状平面。
-- [ ] Splash：在路径终点生成扇形或环形水花网格。
-- [ ] Singular：把多条路径连接成连续水幕。
+- [x] Cross：在 Per Path 基础上为每条路径追加垂直相交的带状平面。
+- [x] Splash：在路径终点生成带前后半径的多环水花网格。
+- [ ] Singular：把多条路径连接成连续水幕（延期到未来阶段）。
+
+### 当前组合和参数
+
+- `Generate Mesh` 一次构建 Per Path、Cross 和 Splash，并用完整结果替换当前 Dynamic Mesh。
+- Per Path 使用 Ribbon Width；Cross 使用独立的 Cross Width，并绕路径切线旋转 90 度。
+- Per Path 和 Cross 复用 Mesh Sample Spacing、Mesh UV Length 和阶段 5 材质通道。
+- Splash 使用路径最后一个稳定采样的切线与法线确定落水平面。
+- Splash Front Radius 和 Back Radius 分别控制水流前方、后方的延伸距离。
+- Splash Radial Segments 控制圆周密度，Splash Rings 控制从中心到边缘的径向密度。
+- Splash UV0 使用中心为 `(0.5, 0.5)` 的径向映射；UV1、UV2 和 Vertex Color 延续阶段 5 的通道语义。
 
 ### Singular 风险
 
@@ -538,13 +548,16 @@ struct FTYWaterfallSample
 - 三角形翻转；
 - UV 在路径边界不连续。
 
-因此 Singular 必须放到最后实现，不能作为动态网格 MVP。
+因此 Singular 不进入本阶段的生成组合。等 Cross 和 Splash 的拓扑与材质协议稳定后，
+再作为独立阶段实现跨路径重采样、排序和连续水幕拓扑，避免暴露不可用功能。
 
 ### 验收标准
 
-- 每种网格模式可以独立生成和清除。
-- 材质槽和显示状态互不干扰。
-- Singular 在路径长度差异较大时不会产生越界访问。
+- 单次生成同时得到 Per Path、Cross 和 Splash，清除时三者一起移除。
+- 重新生成会整体替换旧网格，不会重复累积几何。
+- 三类几何复用材质槽 0、线框 Debug 和稳定材质数据通道。
+- Splash 正面朝向终点采样法线，参数变化不会产生越界或退化索引。
+- Singular 保持不可选，直至未来阶段完成跨路径兼容性处理。
 
 ## 阶段 9：Niagara 和 Audio
 
@@ -738,6 +751,7 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 | ADR-004 | 使用固定时间步长和 `FRandomStream` | 保证同一参数可复现 | 已决定 |
 | ADR-005 | 先完成动态网格，再实现 Static Mesh Bake | 隔离几何错误和资产保存错误 | 已决定 |
 | ADR-006 | 运行时 Actor 默认不 Tick | 生成是编辑器工作流，避免无意义开销 | 已决定 |
+| ADR-007 | 阶段 8 将 Per Path、Cross 和 Splash 组合生成，延期 Singular | 当前无 Advanced 分步界面；Singular 还需要跨路径重采样、排序及异常拓扑处理 | 已决定 |
 
 后续遇到会影响多个阶段的架构选择时，在此追加 ADR，而不是只把决定留在聊天记录中。
 
@@ -757,7 +771,7 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 
 ## 11. 下一步
 
-阶段 4 已完成代码实现和 UE 5.8 编译，当前等待编辑器内的网格朝向、UV、参数和 Undo/Redo 验收。
+阶段 8 已完成代码实现，当前等待 UE 5.8 编译与编辑器内模式、朝向、材质通道和 Undo/Redo 验收。
 
 ### 2026-09-18 - 阶段 0 / Runtime 模块边界
 
@@ -834,3 +848,14 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 默认值调整：根据实际验证将 Max Steps 设为 80、Ribbon Width 设为 50，并默认关闭 Path Debug。
 - 验证方式：用户已完成编译，并验证精简面板、生成期间只读、彩色路径 Debug 和网格线框功能正确。
 - 下一步：提交阶段 7，然后进入阶段 8 的扩展网格模式。
+
+### 2026-09-20 - 阶段 8 / Per Path、Cross 和 Splash 组合网格
+
+- 完成：Generate Mesh 单次按顺序追加 Per Path、Cross 和 Splash，并用组合结果替换 Dynamic Mesh。
+- Cross：在已有 Per Path 上为每条路径追加一条绕流向旋转 90 度的带状面；不重复主平面，避免共面闪烁。
+- Splash：参考 WaterfallTool 的终点水花思路，在每条路径终点按切线和表面法线生成前后非对称的多环径向网格。
+- 参数：Per Path 和 Cross 分别使用 Ribbon Width 与 Cross Width；Splash 参数与共享采样、UV 参数同时显示并统一配置。
+- Singular：本阶段明确延期且不进入生成组合；未来需要先解决不同路径长度、交叉、终止位置和横向排序带来的拓扑兼容问题。
+- 修改文件：Settings Component、Mesh Component、Mesh Builder、Waterfall Actor、Editor Mode Toolkit 和本路线图。
+- 验证方式：已完成静态差异检查；UE 5.8 编译与编辑器视觉验证由用户执行。
+- 下一步：验证组合网格完整性、正面朝向、材质通道、清理、线框 Debug 和 Undo/Redo，通过后提交阶段 8。
