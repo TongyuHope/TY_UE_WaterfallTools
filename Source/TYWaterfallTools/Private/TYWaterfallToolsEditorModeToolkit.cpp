@@ -71,7 +71,7 @@ void FTYWaterfallToolsEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& In
 			[
 				SNew(SButton)
 				.Text(LOCTEXT("GenerateMesh", "Generate Mesh"))
-				.ToolTipText(LOCTEXT("GenerateMeshTooltip", "Build Per Path, Cross and Splash geometry from the generated paths."))
+				.ToolTipText(LOCTEXT("GenerateMeshTooltip", "Build the enabled Singular, Per-Path, Cross and Splash geometry from the generated paths."))
 				.IsEnabled(this, &FTYWaterfallToolsEditorModeToolkit::CanRunGenerationCommand)
 				.OnClicked(this, &FTYWaterfallToolsEditorModeToolkit::OnGenerateMeshClicked)
 			]

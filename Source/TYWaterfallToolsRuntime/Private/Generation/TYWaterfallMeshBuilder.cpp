@@ -45,6 +45,10 @@ bool FTYWaterfallMeshBuilder::BuildMesh()
 	const bool bBuilt = Waterfall->DynamicMeshComponent->BuildCombinedMesh(
 		Waterfall->GeneratedPaths,
 		WidthAxis,
+		Waterfall->WaterfallSettings->ShouldGenerateSingular(),
+		Waterfall->WaterfallSettings->ShouldGeneratePerPath(),
+		Waterfall->WaterfallSettings->ShouldGenerateCross(),
+		Waterfall->WaterfallSettings->ShouldGenerateSplash(),
 		Waterfall->WaterfallSettings->GetRibbonWidth(),
 		Waterfall->WaterfallSettings->GetCrossWidth(),
 		Waterfall->WaterfallSettings->GetMeshUVLength(),

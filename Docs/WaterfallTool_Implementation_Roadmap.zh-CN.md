@@ -525,19 +525,22 @@ struct FTYWaterfallSample
 
 - [x] Cross：在 Per Path 基础上为每条路径追加垂直相交的带状平面。
 - [x] Splash：在路径终点生成带前后半径的多环水花网格。
-- [ ] Singular：把多条路径连接成连续水幕（延期到未来阶段）。
+- [x] Singular：把多条路径重映射并连接成连续水幕。
 
 ### 当前组合和参数
 
-- `Generate Mesh` 一次构建 Per Path、Cross 和 Splash，并用完整结果替换当前 Dynamic Mesh。
+- Singular、Per-Path、Cross 和 Splash 分别提供独立开关；`Generate Mesh` 只追加已勾选的类型，并用完整结果替换当前 Dynamic Mesh。
+- 四个开关全部关闭时会清空旧 Dynamic Mesh，不保留上一次生成结果。
+- Singular 至少需要两条有效路径；路径先按顶部起点在宽度轴上的投影排序，再按归一化距离重映射到统一行数并连接相邻路径。
+- Singular 的 UV0 使用横向路径比例和纵向世界距离，UV1 使用横向累计世界距离和纵向归一化距离。
 - Per Path 使用 Ribbon Width；Cross 使用独立的 Cross Width，并绕路径切线旋转 90 度。
-- Per Path 和 Cross 复用 Mesh Sample Spacing、Mesh UV Length 和阶段 5 材质通道。
+- Singular、Per Path 和 Cross 复用 Mesh Sample Spacing、Mesh UV Length 和阶段 5 材质通道。
 - Splash 使用路径最后一个稳定采样的切线与法线确定落水平面。
 - Splash Front Radius 和 Back Radius 分别控制水流前方、后方的延伸距离。
 - Splash Radial Segments 控制圆周密度，Splash Rings 控制从中心到边缘的径向密度。
 - Splash UV0 使用中心为 `(0.5, 0.5)` 的径向映射；UV1、UV2 和 Vertex Color 延续阶段 5 的通道语义。
 
-### Singular 风险
+### Singular 边界
 
 连续水幕要求相邻路径拥有兼容的采样数量和拓扑。需要处理：
 
@@ -548,16 +551,18 @@ struct FTYWaterfallSample
 - 三角形翻转；
 - UV 在路径边界不连续。
 
-因此 Singular 不进入本阶段的生成组合。等 Cross 和 Splash 的拓扑与材质协议稳定后，
-再作为独立阶段实现跨路径重采样、排序和连续水幕拓扑，避免暴露不可用功能。
+当前实现解决了路径长度、采样数量和终止位置不同造成的索引不兼容。路径身份在顶部排序后保持不变，
+因此结果稳定且易于理解；但当路径在下落过程中严重交叉时，连续水幕仍可能自交。参考插件中的动态点排序
+属于实验性策略，本阶段不移植，未来可作为可选的高级重映射模式增加。
 
 ### 验收标准
 
-- 单次生成同时得到 Per Path、Cross 和 Splash，清除时三者一起移除。
+- 四种模式单独启用时只生成对应几何，任意组合启用时追加到同一个 Dynamic Mesh。
+- 全部关闭后重新生成会清空旧网格并隐藏 Dynamic Mesh Component。
 - 重新生成会整体替换旧网格，不会重复累积几何。
-- 三类几何复用材质槽 0、线框 Debug 和稳定材质数据通道。
+- 四类几何复用材质槽 0、线框 Debug 和稳定材质数据通道。
+- Singular 可连接长度不同的路径，至少两条有效路径时生成，正面绕序与 Per-Path 一致。
 - Splash 正面朝向终点采样法线，参数变化不会产生越界或退化索引。
-- Singular 保持不可选，直至未来阶段完成跨路径兼容性处理。
 
 ## 阶段 9：Niagara
 
@@ -771,7 +776,7 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 | ADR-004 | 使用固定时间步长和 `FRandomStream` | 保证同一参数可复现 | 已决定 |
 | ADR-005 | 先完成动态网格，再实现 Static Mesh Bake | 隔离几何错误和资产保存错误 | 已决定 |
 | ADR-006 | 运行时 Actor 默认不 Tick | 生成是编辑器工作流，避免无意义开销 | 已决定 |
-| ADR-007 | 阶段 8 将 Per Path、Cross 和 Splash 组合生成，延期 Singular | 当前无 Advanced 分步界面；Singular 还需要跨路径重采样、排序及异常拓扑处理 | 已决定 |
+| ADR-007 | 四类网格使用独立开关并组合到同一个 Dynamic Mesh | 当前无 Advanced 分步界面；独立开关兼顾单项调参与任意组合，Singular 使用稳定的统一重采样拓扑 | 已决定 |
 | ADR-008 | 阶段 9 只实现 Niagara，Audio 延期 | 先稳定 FX 数据协议和空间转换，避免同时引入声音布局与衰减资产 | 已决定 |
 
 后续遇到会影响多个阶段的架构选择时，在此追加 ADR，而不是只把决定留在聊天记录中。
@@ -880,6 +885,17 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 修改文件：Settings Component、Mesh Component、Mesh Builder、Waterfall Actor、Editor Mode Toolkit 和本路线图。
 - 验证方式：已完成静态差异检查；UE 5.8 编译与编辑器视觉验证由用户执行。
 - 下一步：验证组合网格完整性、正面朝向、材质通道、清理、线框 Debug 和 Undo/Redo，通过后提交阶段 8。
+
+### 2026-09-20 - 阶段 8 / Singular 与四模式独立开关
+
+- 完成：新增 Singular 连续水幕；Singular、Per-Path、Cross、Splash 改为四个可任意组合的生成开关，默认全部开启。
+- Singular：参考 WaterfallTool 的统一采样规则网格思路，将有效路径按顶部宽度方向稳定排序，并按归一化距离重映射到最大采样行数后连接相邻路径。
+- 材质数据：Singular 继续写入 UV0、UV1、UV2 与 Vertex Color；法线和三角形绕序与已验证的 Per-Path 正面约定一致。
+- 面板：关闭某模式时隐藏其专属参数；全部模式关闭后 Generate Mesh 清空旧网格。
+- 已知限制：固定路径顺序可保证拓扑稳定，但严重交叉的路径仍可能使 Singular 自交；实验性动态排序留待未来高级选项。
+- 修改文件：Settings Component、Mesh Component、Mesh Builder、Editor Mode Toolkit 和本路线图。
+- 验证方式：已完成静态差异检查；UE 5.8 编译与编辑器视觉验证由用户执行。
+- 下一步：分别验证四种单项模式、组合模式、全关清空、Singular 正面与不同路径长度。
 
 ### 2026-09-20 - 阶段 9 / Niagara 数据和组件
 

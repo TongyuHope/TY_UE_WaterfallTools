@@ -18,10 +18,14 @@ public:
 	UTYWaterfallMeshComponent(const FObjectInitializer& ObjectInitializer);
 
 #if WITH_EDITOR
-	/** Replaces the mesh with Per Path ribbons, Cross planes and endpoint splashes. */
+	/** Replaces the mesh with the enabled Singular, Per-Path, Cross and Splash surfaces. */
 	bool BuildCombinedMesh(
 		const TArray<TObjectPtr<UTYWaterfallPathComponent>>& Paths,
 		FVector WorldWidthAxis,
+		bool bGenerateSingular,
+		bool bGeneratePerPath,
+		bool bGenerateCross,
+		bool bGenerateSplash,
 		float RibbonWidth,
 		float CrossWidth,
 		float UVLength,

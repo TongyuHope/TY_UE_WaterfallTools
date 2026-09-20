@@ -60,6 +60,210 @@ void SetTriangleAttributes(
 	Attributes.Colors->SetTriangle(TriangleID, Remap(ColorIDs));
 }
 
+FTYWaterfallSample InterpolateSampleAtNormalizedDistance(
+	const TArray<FTYWaterfallSample>& Samples,
+	float NormalizedDistance)
+{
+	const float TargetDistance = FMath::Clamp(NormalizedDistance, 0.0f, 1.0f);
+	if (Samples.Num() == 1 || TargetDistance <= Samples[0].NormalizedDistance)
+	{
+		return Samples[0];
+	}
+	if (TargetDistance >= Samples.Last().NormalizedDistance)
+	{
+		return Samples.Last();
+	}
+
+	int32 UpperIndex = 1;
+	while (UpperIndex < Samples.Num()
+		&& Samples[UpperIndex].NormalizedDistance < TargetDistance)
+	{
+		++UpperIndex;
+	}
+
+	const int32 LowerIndex = FMath::Max(UpperIndex - 1, 0);
+	const FTYWaterfallSample& Lower = Samples[LowerIndex];
+	const FTYWaterfallSample& Upper = Samples[FMath::Min(UpperIndex, Samples.Num() - 1)];
+	const float DistanceRange = Upper.NormalizedDistance - Lower.NormalizedDistance;
+	const float Alpha = DistanceRange > KINDA_SMALL_NUMBER
+		? (TargetDistance - Lower.NormalizedDistance) / DistanceRange
+		: 0.0f;
+
+	FTYWaterfallSample Result;
+	Result.Position = FMath::Lerp(Lower.Position, Upper.Position, Alpha);
+	Result.Tangent = FMath::Lerp(Lower.Tangent, Upper.Tangent, Alpha).GetSafeNormal();
+	Result.Normal = FMath::Lerp(Lower.Normal, Upper.Normal, Alpha).GetSafeNormal();
+	Result.Velocity = FMath::Lerp(Lower.Velocity, Upper.Velocity, Alpha);
+	Result.Distance = FMath::Lerp(Lower.Distance, Upper.Distance, Alpha);
+	Result.NormalizedDistance = TargetDistance;
+	Result.Speed = FMath::Lerp(Lower.Speed, Upper.Speed, Alpha);
+	Result.Impact = FMath::Lerp(Lower.Impact, Upper.Impact, Alpha);
+	Result.Turbulence = FMath::Lerp(Lower.Turbulence, Upper.Turbulence, Alpha);
+	Result.RandomValue = FMath::Lerp(Lower.RandomValue, Upper.RandomValue, Alpha);
+	return Result;
+}
+
+bool AppendSingular(
+	FDynamicMesh3& Mesh,
+	const FWaterfallMeshAttributes& Attributes,
+	const TArray<TObjectPtr<UTYWaterfallPathComponent>>& Paths,
+	const FTransform& WorldToMesh,
+	FVector WorldWidthAxis,
+	float UVLength)
+{
+	struct FSortedPath
+	{
+		const TArray<FTYWaterfallSample>* Samples = nullptr;
+		double WidthPosition = 0.0;
+	};
+
+	TArray<FSortedPath> SortedPaths;
+	int32 RowCount = 0;
+	for (const UTYWaterfallPathComponent* Path : Paths)
+	{
+		if (!IsValid(Path))
+		{
+			continue;
+		}
+
+		const TArray<FTYWaterfallSample>& Samples = Path->GetResampledSamples();
+		if (Samples.Num() < 2 || Samples.Last().Distance <= KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+
+		SortedPaths.Add({ &Samples, FVector::DotProduct(Samples[0].Position, WorldWidthAxis) });
+		RowCount = FMath::Max(RowCount, Samples.Num());
+	}
+
+	if (SortedPaths.Num() < 2 || RowCount < 2)
+	{
+		return false;
+	}
+
+	// The reference plugin remaps paths to a shared longitudinal resolution before
+	// joining them. Sorting once at the lip preserves path identity on every row,
+	// which makes the topology deterministic and avoids row-to-row index swaps.
+	SortedPaths.StableSort([](const FSortedPath& A, const FSortedPath& B)
+	{
+		return A.WidthPosition < B.WidthPosition;
+	});
+
+	const int32 PathCount = SortedPaths.Num();
+	TArray<FTYWaterfallSample> GridSamples;
+	GridSamples.SetNum(PathCount * RowCount);
+	for (int32 PathIndex = 0; PathIndex < PathCount; ++PathIndex)
+	{
+		for (int32 RowIndex = 0; RowIndex < RowCount; ++RowIndex)
+		{
+			const float RowAlpha = static_cast<float>(RowIndex) / (RowCount - 1);
+			GridSamples[PathIndex * RowCount + RowIndex] =
+				InterpolateSampleAtNormalizedDistance(*SortedPaths[PathIndex].Samples, RowAlpha);
+		}
+	}
+
+	TArray<float> AcrossDistances;
+	AcrossDistances.Init(0.0f, PathCount * RowCount);
+	for (int32 RowIndex = 0; RowIndex < RowCount; ++RowIndex)
+	{
+		for (int32 PathIndex = 1; PathIndex < PathCount; ++PathIndex)
+		{
+			const int32 CurrentIndex = PathIndex * RowCount + RowIndex;
+			const int32 PreviousIndex = (PathIndex - 1) * RowCount + RowIndex;
+			AcrossDistances[CurrentIndex] = AcrossDistances[PreviousIndex]
+				+ FVector::Distance(
+					GridSamples[PreviousIndex].Position,
+					GridSamples[CurrentIndex].Position);
+		}
+	}
+
+	const int32 VertexCount = PathCount * RowCount;
+	TArray<int32> VertexIDs;
+	TArray<int32> NormalIDs;
+	TArray<int32> UV0IDs;
+	TArray<int32> UV1IDs;
+	TArray<int32> UV2IDs;
+	TArray<int32> ColorIDs;
+	VertexIDs.Reserve(VertexCount);
+	NormalIDs.Reserve(VertexCount);
+	UV0IDs.Reserve(VertexCount);
+	UV1IDs.Reserve(VertexCount);
+	UV2IDs.Reserve(VertexCount);
+	ColorIDs.Reserve(VertexCount);
+
+	for (int32 PathIndex = 0; PathIndex < PathCount; ++PathIndex)
+	{
+		const float PathAlpha = static_cast<float>(PathIndex) / (PathCount - 1);
+		for (int32 RowIndex = 0; RowIndex < RowCount; ++RowIndex)
+		{
+			const int32 GridIndex = PathIndex * RowCount + RowIndex;
+			const FTYWaterfallSample& Sample = GridSamples[GridIndex];
+			const int32 PreviousPath = FMath::Max(PathIndex - 1, 0);
+			const int32 NextPath = FMath::Min(PathIndex + 1, PathCount - 1);
+			FVector WorldAcross = (
+				GridSamples[NextPath * RowCount + RowIndex].Position
+				- GridSamples[PreviousPath * RowCount + RowIndex].Position).GetSafeNormal();
+			if (WorldAcross.IsNearlyZero())
+			{
+				WorldAcross = WorldWidthAxis;
+			}
+
+			FVector WorldTangent = Sample.Tangent.GetSafeNormal();
+			if (WorldTangent.IsNearlyZero())
+			{
+				WorldTangent = FVector::DownVector;
+			}
+			FVector WorldNormal = FVector::CrossProduct(WorldAcross, WorldTangent).GetSafeNormal();
+			if (WorldNormal.IsNearlyZero())
+			{
+				WorldNormal = Sample.Normal.GetSafeNormal();
+			}
+			if (WorldNormal.IsNearlyZero())
+			{
+				WorldNormal = FVector::UpVector;
+			}
+
+			VertexIDs.Add(Mesh.AppendVertex(FVector3d(
+				WorldToMesh.TransformPosition(Sample.Position))));
+			NormalIDs.Add(Attributes.Normals->AppendElement(FVector3f(
+				WorldToMesh.TransformVectorNoScale(WorldNormal).GetSafeNormal())));
+			UV0IDs.Add(Attributes.UV0->AppendElement(FVector2f(
+				PathAlpha, Sample.Distance / UVLength)));
+			UV1IDs.Add(Attributes.UV1->AppendElement(FVector2f(
+				AcrossDistances[GridIndex], Sample.NormalizedDistance)));
+			UV2IDs.Add(Attributes.UV2->AppendElement(FVector2f(
+				Sample.Speed / 1000.0f, Sample.Turbulence)));
+			ColorIDs.Add(Attributes.Colors->AppendElement(FVector4f(
+				Sample.Turbulence, Sample.Impact, Sample.RandomValue, 1.0f)));
+		}
+	}
+
+	// Use the same winding as the validated Per-Path ribbon: increasing path
+	// index is left-to-right, while increasing row index follows the water flow.
+	for (int32 PathIndex = 0; PathIndex < PathCount - 1; ++PathIndex)
+	{
+		for (int32 RowIndex = 0; RowIndex < RowCount - 1; ++RowIndex)
+		{
+			const int32 Left0 = PathIndex * RowCount + RowIndex;
+			const int32 Left1 = Left0 + 1;
+			const int32 Right0 = (PathIndex + 1) * RowCount + RowIndex;
+			const int32 Right1 = Right0 + 1;
+			const FIndex3i CornersA(Left0, Left1, Right0);
+			const FIndex3i CornersB(Right0, Left1, Right1);
+			const int32 TriangleA = Mesh.AppendTriangle(
+				VertexIDs[CornersA.A], VertexIDs[CornersA.B], VertexIDs[CornersA.C]);
+			const int32 TriangleB = Mesh.AppendTriangle(
+				VertexIDs[CornersB.A], VertexIDs[CornersB.B], VertexIDs[CornersB.C]);
+			SetTriangleAttributes(Attributes, TriangleA, CornersA,
+				NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
+			SetTriangleAttributes(Attributes, TriangleB, CornersB,
+				NormalIDs, UV0IDs, UV1IDs, UV2IDs, ColorIDs);
+		}
+	}
+
+	return true;
+}
+
 bool AppendRibbon(
 	FDynamicMesh3& Mesh,
 	const FWaterfallMeshAttributes& Attributes,
@@ -308,6 +512,10 @@ UTYWaterfallMeshComponent::UTYWaterfallMeshComponent(
 bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 	const TArray<TObjectPtr<UTYWaterfallPathComponent>>& Paths,
 	FVector WorldWidthAxis,
+	bool bGenerateSingular,
+	bool bGeneratePerPath,
+	bool bGenerateCross,
+	bool bGenerateSplash,
 	float RibbonWidth,
 	float CrossWidth,
 	float UVLength,
@@ -316,13 +524,17 @@ bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 	int32 RadialSegments,
 	int32 Rings)
 {
+	FDynamicMesh3 NewMesh;
 	WorldWidthAxis = WorldWidthAxis.GetSafeNormal();
 	if (WorldWidthAxis.IsNearlyZero())
 	{
+		// A failed rebuild must not leave geometry from an earlier successful run.
+		SetMesh(MoveTemp(NewMesh));
+		SetVisibility(false);
+		MarkPackageDirty();
 		return false;
 	}
 
-	FDynamicMesh3 NewMesh;
 	const FWaterfallMeshAttributes Attributes = InitializeAttributes(NewMesh);
 	const FTransform WorldToMesh = GetComponentTransform().Inverse();
 	const float SafeRibbonWidth = FMath::Max(RibbonWidth, 1.0f);
@@ -334,42 +546,55 @@ bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 	const int32 SafeRings = FMath::Clamp(Rings, 1, 32);
 	int32 BuiltSurfaceCount = 0;
 
-	// Pass 1 builds the validated water-surface ribbon for every path.
-	for (const UTYWaterfallPathComponent* Path : Paths)
+	// Singular joins all valid paths into one sheet after remapping their samples
+	// to a shared row count. It can coexist with any of the per-path modes.
+	if (bGenerateSingular)
 	{
-		if (!IsValid(Path))
-		{
-			continue;
-		}
-
-		const TArray<FTYWaterfallSample>& Samples = Path->GetResampledSamples();
-		BuiltSurfaceCount += AppendRibbon(NewMesh, Attributes, Samples,
-			WorldToMesh, WorldWidthAxis, SafeRibbonWidth, SafeUVLength, 0.0f) ? 1 : 0;
+		BuiltSurfaceCount += AppendSingular(NewMesh, Attributes, Paths,
+			WorldToMesh, WorldWidthAxis, SafeUVLength) ? 1 : 0;
 	}
 
-	// Pass 2 adds only the perpendicular plane. Re-adding the zero-degree ribbon
-	// here would overlap Per Path exactly and cause depth flicker.
-	for (const UTYWaterfallPathComponent* Path : Paths)
+	if (bGeneratePerPath)
 	{
-		if (IsValid(Path))
+		for (const UTYWaterfallPathComponent* Path : Paths)
 		{
+			if (!IsValid(Path))
+			{
+				continue;
+			}
+
 			BuiltSurfaceCount += AppendRibbon(NewMesh, Attributes,
 				Path->GetResampledSamples(), WorldToMesh, WorldWidthAxis,
-				SafeCrossWidth, SafeUVLength, 90.0f) ? 1 : 0;
+				SafeRibbonWidth, SafeUVLength, 0.0f) ? 1 : 0;
 		}
 	}
 
-	// Pass 3 finishes the combined mesh with one radial splash per endpoint.
-	for (const UTYWaterfallPathComponent* Path : Paths)
+	if (bGenerateCross)
 	{
-		if (!IsValid(Path) || Path->GetResampledSamples().IsEmpty())
+		for (const UTYWaterfallPathComponent* Path : Paths)
 		{
-			continue;
+			if (IsValid(Path))
+			{
+				BuiltSurfaceCount += AppendRibbon(NewMesh, Attributes,
+					Path->GetResampledSamples(), WorldToMesh, WorldWidthAxis,
+					SafeCrossWidth, SafeUVLength, 90.0f) ? 1 : 0;
+			}
 		}
+	}
 
-		BuiltSurfaceCount += AppendSplash(NewMesh, Attributes,
-			Path->GetResampledSamples().Last(), WorldToMesh, WorldWidthAxis,
-			SafeFrontRadius, SafeBackRadius, SafeRadialSegments, SafeRings) ? 1 : 0;
+	if (bGenerateSplash)
+	{
+		for (const UTYWaterfallPathComponent* Path : Paths)
+		{
+			if (!IsValid(Path) || Path->GetResampledSamples().IsEmpty())
+			{
+				continue;
+			}
+
+			BuiltSurfaceCount += AppendSplash(NewMesh, Attributes,
+				Path->GetResampledSamples().Last(), WorldToMesh, WorldWidthAxis,
+				SafeFrontRadius, SafeBackRadius, SafeRadialSegments, SafeRings) ? 1 : 0;
+		}
 	}
 
 	SetMesh(MoveTemp(NewMesh));

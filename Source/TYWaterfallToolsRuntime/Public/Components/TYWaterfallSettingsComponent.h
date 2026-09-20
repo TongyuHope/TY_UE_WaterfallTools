@@ -34,6 +34,10 @@ public:
 	float GetFixedDeltaTime() const { return FMath::Max(FixedDeltaTime, 0.001f); }
 	int32 GetMaxSteps() const { return FMath::Max(MaxSteps, 1); }
 	float GetTerminationHeight() const { return TerminationHeight; }
+	bool ShouldGenerateSingular() const { return bGenerateSingular; }
+	bool ShouldGeneratePerPath() const { return bGeneratePerPath; }
+	bool ShouldGenerateCross() const { return bGenerateCross; }
+	bool ShouldGenerateSplash() const { return bGenerateSplash; }
 	float GetRibbonWidth() const { return FMath::Max(RibbonWidth, 1.0f); }
 	float GetCrossWidth() const { return FMath::Max(CrossWidth, 1.0f); }
 	float GetMeshSampleSpacing() const { return FMath::Max(MeshSampleSpacing, 1.0f); }
@@ -90,36 +94,52 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Simulation")
 	float TerminationHeight = -1000.0f;
 
+	/** Connect all paths into one continuous waterfall sheet. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (DisplayName = "Generate Singular"))
+	bool bGenerateSingular = true;
+
+	/** Generate one water-surface ribbon for every simulated path. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (DisplayName = "Generate Per-Path"))
+	bool bGeneratePerPath = true;
+
+	/** Generate one perpendicular ribbon for every simulated path. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (DisplayName = "Generate Cross"))
+	bool bGenerateCross = true;
+
+	/** Generate a radial splash surface at every path endpoint. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (DisplayName = "Generate Splash"))
+	bool bGenerateSplash = true;
+
 	/** Total width of every generated Per Path ribbon, measured in Unreal units. */
-	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0", EditCondition = "bGeneratePerPath", EditConditionHides))
 	float RibbonWidth = 50.0f;
 
 	/** Width of the perpendicular Cross plane generated along every path. */
-	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0", EditCondition = "bGenerateCross", EditConditionHides))
 	float CrossWidth = 50.0f;
 
 	/** Target distance between adjacent ribbon rows. Smaller values create denser meshes. */
-	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0", EditCondition = "bGenerateSingular || bGeneratePerPath || bGenerateCross", EditConditionHides))
 	float MeshSampleSpacing = 25.0f;
 
 	/** World-space distance represented by one repeat along the material's V axis. */
-	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0", EditCondition = "bGenerateSingular || bGeneratePerPath || bGenerateCross", EditConditionHides))
 	float MeshUVLength = 200.0f;
 
 	/** Distance the splash extends in the incoming flow direction. */
-	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0", EditCondition = "bGenerateSplash", EditConditionHides))
 	float SplashFrontRadius = 300.0f;
 
 	/** Distance the splash extends behind the path endpoint. */
-	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0", EditCondition = "bGenerateSplash", EditConditionHides))
 	float SplashBackRadius = 75.0f;
 
 	/** Number of vertices around each splash ring. */
-	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "3", ClampMax = "128"))
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "3", ClampMax = "128", EditCondition = "bGenerateSplash", EditConditionHides))
 	int32 SplashRadialSegments = 16;
 
 	/** Number of concentric rings between the endpoint and splash perimeter. */
-	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1", ClampMax = "32"))
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1", ClampMax = "32", EditCondition = "bGenerateSplash", EditConditionHides))
 	int32 SplashRings = 4;
 
 	/** Optional material assigned to all generated surfaces in slot 0. */
