@@ -108,6 +108,7 @@ void UTYWaterfallPathComponent::ConfigureSimulation(
 	float InInitialSpeed,
 	FVector InGravity,
 	float InDrag,
+	bool bInEnableWorldCollision,
 	float InFixedDeltaTime,
 	int32 InMaxSteps,
 	float InTerminationHeight)
@@ -115,6 +116,7 @@ void UTYWaterfallPathComponent::ConfigureSimulation(
 	InitialSpeed = FMath::Max(InInitialSpeed, 0.0f);
 	Gravity = InGravity;
 	Drag = FMath::Clamp(InDrag, 0.0f, 1.0f);
+	bEnableWorldCollision = bInEnableWorldCollision;
 	FixedDeltaTime = FMath::Max(InFixedDeltaTime, 0.001f);
 	MaxSteps = FMath::Max(InMaxSteps, 1);
 	TerminationHeight = InTerminationHeight;
@@ -185,9 +187,13 @@ int32 UTYWaterfallPathComponent::AdvanceSimulation(int32 StepBudget)
 		}
 
 		FHitResult Hit;
-		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(TYWaterfallPath), true, Waterfall);
-		const bool bHit = World->LineTraceSingleByChannel(
-			Hit, PreviousPosition, CandidatePosition, ECC_Visibility, QueryParams);
+		bool bHit = false;
+		if (bEnableWorldCollision)
+		{
+			FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(TYWaterfallPath), true, Waterfall);
+			bHit = World->LineTraceSingleByChannel(
+				Hit, PreviousPosition, CandidatePosition, ECC_Visibility, QueryParams);
+		}
 
 		if (bHit)
 		{
@@ -214,9 +220,13 @@ int32 UTYWaterfallPathComponent::AdvanceSimulation(int32 StepBudget)
 
 		SimulatedPoints.Add(CurrentPoint);
 
-		if (CurrentPoint.State == ETYWaterfallPointState::Stopped
+		// Without world collision, only the Kill Plane should stop normal motion.
+		// MaxSteps remains a safety cap for paths that never reach the plane.
+		const bool bStoppedByWorldCollision = bEnableWorldCollision
+			&& (CurrentPoint.State == ETYWaterfallPointState::Stopped
+				|| CurrentPoint.Velocity.IsNearlyZero());
+		if (bStoppedByWorldCollision
 			|| (!bHasKillPlane && CurrentPoint.Position.Z <= WorldTerminationHeight)
-			|| CurrentPoint.Velocity.IsNearlyZero()
 			|| StepsCompleted >= StepLimit)
 		{
 			SimulatedPoints.Last().State = ETYWaterfallPointState::Terminated;

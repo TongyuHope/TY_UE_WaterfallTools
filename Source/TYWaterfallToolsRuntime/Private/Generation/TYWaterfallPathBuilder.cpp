@@ -86,6 +86,7 @@ bool FTYWaterfallPathBuilder::CreatePaths()
 			Waterfall->WaterfallSettings->GetInitialSpeed(),
 			Waterfall->WaterfallSettings->GetGravity(),
 			Waterfall->WaterfallSettings->GetDrag(),
+			Waterfall->WaterfallSettings->ShouldEnableWorldCollision(),
 			Waterfall->WaterfallSettings->GetFixedDeltaTime(),
 			Waterfall->WaterfallSettings->GetMaxSteps(),
 			Waterfall->WaterfallSettings->GetTerminationHeight());

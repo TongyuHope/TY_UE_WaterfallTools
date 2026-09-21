@@ -965,3 +965,4 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 模拟：参考 WaterfallTools 对每一步运动线段执行无限数学平面相交测试；穿越 Kill Plane 时精确停在交点并保存最终样本，不依赖 Plane 网格碰撞。
 - 默认位置：Kill Plane 初始位于 Actor 局部 Z=-1000，与默认 `Termination Height` 保持一致；用户可在模式面板中独立移动它。
 - 视口交互：Editor Mode 改为继承 `UBaseLegacyWidgetEdMode`，接入 UE5.8 默认选择模式使用的 Transform Widget 与组件视口交互桥接层。
+- 碰撞开关：Simulation 新增 `Enable World Collision`；关闭时跳过场景碰撞和表面滑动，但重力、阻力、步进及 Kill Plane 数学平面终止仍然生效。

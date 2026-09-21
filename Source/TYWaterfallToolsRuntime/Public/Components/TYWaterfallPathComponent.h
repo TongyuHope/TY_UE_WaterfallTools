@@ -57,7 +57,8 @@ public:
 	bool InitializeSimulation(float SplineTime, float DirectionJitterDegrees = 0.0f,
 		bool bReverseFlowDirection = false);
 	void ConfigureSimulation(float InInitialSpeed, FVector InGravity, float InDrag,
-		float InFixedDeltaTime, int32 InMaxSteps, float InTerminationHeight);
+		bool bInEnableWorldCollision, float InFixedDeltaTime, int32 InMaxSteps,
+		float InTerminationHeight);
 
 	/** Advances at most StepBudget fixed steps and returns the number consumed. */
 	int32 AdvanceSimulation(int32 StepBudget);
@@ -94,6 +95,10 @@ protected:
 	/** Fraction of velocity removed per second. Values are clamped to [0, 1]. */
 	UPROPERTY(VisibleAnywhere, Category = "Simulation")
 	float Drag = 0.1f;
+
+	/** Whether this path interacts with world geometry; Kill Plane is independent. */
+	UPROPERTY(VisibleAnywhere, Category = "Simulation")
+	bool bEnableWorldCollision = true;
 
 	/** Fixed time step makes repeated runs with the same inputs deterministic. */
 	UPROPERTY(VisibleAnywhere, Category = "Simulation")

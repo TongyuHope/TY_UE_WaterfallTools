@@ -31,6 +31,7 @@ public:
 	float GetInitialSpeed() const { return FMath::Max(InitialSpeed, 0.0f); }
 	FVector GetGravity() const { return Gravity; }
 	float GetDrag() const { return FMath::Clamp(Drag, 0.0f, 1.0f); }
+	bool ShouldEnableWorldCollision() const { return bEnableWorldCollision; }
 	float GetFixedDeltaTime() const { return FMath::Max(FixedDeltaTime, 0.001f); }
 	int32 GetMaxSteps() const { return FMath::Max(MaxSteps, 1); }
 	float GetTerminationHeight() const { return TerminationHeight; }
@@ -89,6 +90,10 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Simulation", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float Drag = 0.1f;
+
+	/** Enables collision and sliding against scene geometry. Kill Plane always remains active. */
+	UPROPERTY(EditAnywhere, Category = "Simulation", meta = (DisplayName = "Enable World Collision"))
+	bool bEnableWorldCollision = true;
 
 	UPROPERTY(EditAnywhere, Category = "Simulation", meta = (ClampMin = "0.001", ClampMax = "0.1"))
 	float FixedDeltaTime = 0.016f;
