@@ -312,6 +312,7 @@ bool AppendRibbon(
 	}
 
 	const int32 SegmentCount = Samples.Num() - 1;
+	const bool bCrossPlane = MaterialSlot == EWaterfallMaterialSlot::Cross;
 	const int32 SafeSubdivisions = FMath::Clamp(Subdivisions, 0, 32);
 	const int32 RowVertexCount = SafeSubdivisions + 2;
 	TArray<int32> VertexIDs;
@@ -345,18 +346,42 @@ bool AppendRibbon(
 			WorldAcross = FVector::RightVector;
 		}
 
-		// Cross mode rotates a second copy around the local flow direction. Both
-		// copies retain independent vertices so each plane has a stable normal.
-		WorldAcross = WorldAcross.RotateAngleAxis(RotationDegrees, WorldTangent);
-		const FVector WorldNormal = FVector::CrossProduct(
-			WorldAcross, WorldTangent).GetSafeNormal();
+		if (bCrossPlane)
+		{
+			// WaterfallTools builds Cross from the cached surface normal.  Rotating
+			// the width axis by 90 degrees is only an approximation and can make the
+			// plane nearly edge-on to its own normal at curved path samples.
+			const FVector FallbackAcross = WorldAcross;
+			// Reference Cross expands directly along the cached surface normal.
+			// Projecting it onto the tangent-orthogonal plane changes the plane's
+			// facing and makes the material appear on the wrong viewing side.
+			WorldAcross = Sample.Normal.GetSafeNormal();
+			if (WorldAcross.IsNearlyZero())
+			{
+				WorldAcross = FallbackAcross.RotateAngleAxis(RotationDegrees, WorldTangent);
+			}
+		}
+		else
+		{
+			WorldAcross = WorldAcross.RotateAngleAxis(RotationDegrees, WorldTangent);
+		}
+		const FVector WorldNormal = bCrossPlane
+			? FVector::CrossProduct(WorldTangent, WorldAcross).GetSafeNormal()
+			: FVector::CrossProduct(WorldAcross, WorldTangent).GetSafeNormal();
 		// WaterfallTools treats Per-Path width as the total width, while Cross
 		// width is the distance from its centre to either side.
 		const float HalfWidth = MaterialSlot == EWaterfallMaterialSlot::Cross
 			? Width : Width * 0.5f;
 		const FVector HalfWidthOffset = WorldAcross * HalfWidth;
-		const FVector WorldLeft = Sample.Position - HalfWidthOffset;
-		const FVector WorldRight = Sample.Position + HalfWidthOffset;
+		// Cross uses the same left/right ordering as the reference builder:
+		// left is +Normal and right is -Normal. This keeps the ribbon winding
+		// consistent with the normal written to the dynamic mesh.
+		const FVector WorldLeft = bCrossPlane
+			? Sample.Position + HalfWidthOffset
+			: Sample.Position - HalfWidthOffset;
+		const FVector WorldRight = bCrossPlane
+			? Sample.Position - HalfWidthOffset
+			: Sample.Position + HalfWidthOffset;
 		const FVector3f LocalNormal = FVector3f(
 			WorldToMesh.TransformVectorNoScale(WorldNormal).GetSafeNormal());
 
@@ -369,7 +394,9 @@ bool AppendRibbon(
 			const float ColumnAlpha = static_cast<float>(ColumnIndex)
 				/ static_cast<float>(RowVertexCount - 1);
 			const FVector WorldPosition = FMath::Lerp(WorldLeft, WorldRight, ColumnAlpha);
-			const float Across = FMath::Lerp(-HalfWidth, HalfWidth, ColumnAlpha);
+			const float Across = bCrossPlane
+				? FMath::Lerp(HalfWidth, -HalfWidth, ColumnAlpha)
+				: FMath::Lerp(-HalfWidth, HalfWidth, ColumnAlpha);
 			VertexIDs.Add(Mesh.AppendVertex(FVector3d(
 				WorldToMesh.TransformPosition(WorldPosition))));
 			NormalIDs.Add(Attributes.Normals->AppendElement(LocalNormal));
@@ -392,8 +419,14 @@ bool AppendRibbon(
 			const int32 Right0 = Left0 + 1;
 			const int32 Left1 = Left0 + RowVertexCount;
 			const int32 Right1 = Left1 + 1;
-			const FIndex3i CornersA(Left0, Left1, Right0);
-			const FIndex3i CornersB(Right0, Left1, Right1);
+			// WaterfallTools reverses the Cross plane winding relative to the
+			// Per-Path ribbon. Keep both triangles in the same facing direction.
+			const FIndex3i CornersA = bCrossPlane
+				? FIndex3i(Left0, Right0, Left1)
+				: FIndex3i(Left0, Left1, Right0);
+			const FIndex3i CornersB = bCrossPlane
+				? FIndex3i(Right1, Left1, Right0)
+				: FIndex3i(Right0, Left1, Right1);
 			const int32 TriangleA = Mesh.AppendTriangle(
 				VertexIDs[CornersA.A], VertexIDs[CornersA.B], VertexIDs[CornersA.C]);
 			const int32 TriangleB = Mesh.AppendTriangle(

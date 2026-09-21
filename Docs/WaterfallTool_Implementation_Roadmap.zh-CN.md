@@ -953,4 +953,6 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 绕序：Splash 三角形调整为朝向终点采样法线的正面绕序，避免单面材质从背面观察时消失。
 - 平面：Splash 不再复用瀑布墙面的采样法线，改用入水面的水平法线构造宽度轴和落水轴，确保网格与水面平行。
 - 朝向：Splash 先按参考插件完成闭合轮廓，再将整个轮廓、挤出方向和局部 UV 方向绕入水面中心 Z 轴旋转 180 度，避免仅反转落水轴造成端帽交叉。
+- Cross：按参考 `MeshBuffers_CalculatePositions` 直接使用完整路径采样法线作为 Cross 平面的半宽方向（不再投影到切线正交平面），并采用参考的左右顶点顺序，修正材质侧视方向。
+- Cross 绕序：Cross 使用参考插件独立的 `ABC / CBD` 三角形方向和对应法线，不再复用 Per-Path 的面片绕序。
 - 验证方式：未编译；由用户在 UE 5.8 中验证 Splash 材质动画、遮罩、正面可见性及与 Per-Path/Cross 的组合。
