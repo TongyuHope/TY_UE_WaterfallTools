@@ -100,6 +100,8 @@ public:
 
 	UTYWaterfallSettingsComponent* GetWaterfallSettings() const { return WaterfallSettings; }
 	void SetPathDebugVisible(bool bVisible);
+	/** Shows the authoring plane only while the Waterfall editor mode owns this actor. */
+	void SetKillPlaneEditorVisible(bool bVisible);
 #endif
 
 protected:

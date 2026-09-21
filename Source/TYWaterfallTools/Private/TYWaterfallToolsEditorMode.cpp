@@ -44,6 +44,7 @@ void UTYWaterfallToolsEditorMode::Exit()
 	// any editor-time task before the toolkit releases its selection reference.
 	if (ATYWaterfallActor* Waterfall = SelectedWaterfall.Get())
 	{
+		Waterfall->SetKillPlaneEditorVisible(false);
 		if (Waterfall->IsGeneratingPaths())
 		{
 			Waterfall->CancelPathGeneration();
@@ -71,6 +72,10 @@ TMap<FName, TArray<TSharedPtr<FUICommandInfo>>> UTYWaterfallToolsEditorMode::Get
 
 void UTYWaterfallToolsEditorMode::RefreshSelectedWaterfall()
 {
+	if (ATYWaterfallActor* PreviousWaterfall = SelectedWaterfall.Get())
+	{
+		PreviousWaterfall->SetKillPlaneEditorVisible(false);
+	}
 	SelectedWaterfall.Reset();
 	if (GEditor)
 	{
@@ -81,6 +86,7 @@ void UTYWaterfallToolsEditorMode::RefreshSelectedWaterfall()
 				if (ATYWaterfallActor* Waterfall = Cast<ATYWaterfallActor>(*It))
 				{
 					SelectedWaterfall = Waterfall;
+					Waterfall->SetKillPlaneEditorVisible(true);
 					break;
 				}
 			}

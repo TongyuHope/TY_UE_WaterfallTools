@@ -83,7 +83,9 @@ ATYWaterfallActor::ATYWaterfallActor()
 		KillPlaneComponent->SetMobility(EComponentMobility::Movable);
 		// The mesh is only a visual representation. Simulation performs a robust
 		// segment/plane test and does not depend on mesh collision.
-		KillPlaneComponent->SetVisibility(true);
+		// The editor mode enables this preview only for the currently selected
+		// waterfall. Keeping it hidden by default prevents scene clutter.
+		KillPlaneComponent->SetVisibility(false);
 		KillPlaneComponent->SetHiddenInGame(true);
 		KillPlaneComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
@@ -290,6 +292,15 @@ void ATYWaterfallActor::SetPathDebugVisible(bool bVisible)
 			Path->SetDrawDebug(bVisible);
 			Path->MarkRenderStateDirty();
 		}
+	}
+}
+
+void ATYWaterfallActor::SetKillPlaneEditorVisible(bool bVisible)
+{
+	if (IsValid(KillPlaneComponent))
+	{
+		KillPlaneComponent->SetVisibility(bVisible, false);
+		KillPlaneComponent->SetHiddenInGame(true);
 	}
 }
 #endif
