@@ -2,14 +2,14 @@
 
 #pragma once
 
-#include "Tools/UEdMode.h"
+#include "Tools/LegacyEdModeWidgetHelpers.h"
 #include "TYWaterfallToolsEditorMode.generated.h"
 
 class ATYWaterfallActor;
 
 /** Editor mode that coordinates selection and the waterfall authoring toolkit. */
 UCLASS()
-class UTYWaterfallToolsEditorMode : public UEdMode
+class UTYWaterfallToolsEditorMode : public UBaseLegacyWidgetEdMode
 {
 	GENERATED_BODY()
 

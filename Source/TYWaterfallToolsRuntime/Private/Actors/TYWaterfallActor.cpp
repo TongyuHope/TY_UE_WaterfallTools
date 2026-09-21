@@ -76,9 +76,14 @@ ATYWaterfallActor::ATYWaterfallActor()
 		}
 
 		KillPlaneComponent->SetupAttachment(RootComp);
+		// Match the default simulation termination height while keeping the plane
+		// independently movable from the Details panel.
+		KillPlaneComponent->SetRelativeLocation(FVector(0.0f, 0.0f, -1000.0f));
 		KillPlaneComponent->SetRelativeScale3D(FVector(20.0f));
 		KillPlaneComponent->SetMobility(EComponentMobility::Movable);
-		KillPlaneComponent->SetVisibility(false);
+		// The mesh is only a visual representation. Simulation performs a robust
+		// segment/plane test and does not depend on mesh collision.
+		KillPlaneComponent->SetVisibility(true);
 		KillPlaneComponent->SetHiddenInGame(true);
 		KillPlaneComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}

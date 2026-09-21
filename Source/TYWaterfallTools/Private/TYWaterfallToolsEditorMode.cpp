@@ -34,7 +34,7 @@ void UTYWaterfallToolsEditorMode::ActorSelectionChangeNotify()
 
 void UTYWaterfallToolsEditorMode::Enter()
 {
-	UEdMode::Enter();
+	Super::Enter();
 	RefreshSelectedWaterfall();
 }
 
@@ -56,7 +56,7 @@ void UTYWaterfallToolsEditorMode::Exit()
 		StaticCastSharedPtr<FTYWaterfallToolsEditorModeToolkit>(Toolkit)->SetSelectedWaterfall(nullptr);
 	}
 
-	UEdMode::Exit();
+	Super::Exit();
 }
 
 void UTYWaterfallToolsEditorMode::CreateToolkit()

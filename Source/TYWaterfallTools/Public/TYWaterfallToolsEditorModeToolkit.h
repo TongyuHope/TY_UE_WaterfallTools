@@ -32,6 +32,8 @@ private:
 	bool CanRunGenerationCommand() const;
 	bool CanCancelGeneration() const;
 	bool CanEditSettings() const;
+	FReply OnEditTopSplineClicked();
+	FReply OnEditKillPlaneClicked();
 	FReply OnGeneratePathsClicked();
 	FReply OnGenerateMeshClicked();
 	FReply OnRefreshNiagaraClicked();

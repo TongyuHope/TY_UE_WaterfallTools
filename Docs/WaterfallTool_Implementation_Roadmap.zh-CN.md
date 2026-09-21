@@ -956,3 +956,12 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - Cross：按参考 `MeshBuffers_CalculatePositions` 直接使用完整路径采样法线作为 Cross 平面的半宽方向（不再投影到切线正交平面），并采用参考的左右顶点顺序，修正材质侧视方向。
 - Cross 绕序：Cross 使用参考插件独立的 `ABC / CBD` 三角形方向和对应法线，不再复用 Per-Path 的面片绕序。
 - 验证方式：未编译；由用户在 UE 5.8 中验证 Splash 材质动画、遮罩、正面可见性及与 Per-Path/Cross 的组合。
+
+### 2026-09-21 - 编辑模式与 Kill Plane 修正
+
+- 编辑模式：保持仅显示 Waterfall Settings 的精简参数区；Actor 和组件变换由视口 Gizmo 与编辑器标准 Details 面板负责。
+- 样条编辑：模式面板增加 `Edit Top Spline`，直接选择 TopSpline 组件并交给 UE 的 Spline Visualizer 编辑。
+- Kill Plane：增加 `Edit Kill Plane` 操作；组件在编辑器中可见、可选，运行时保持隐藏，网格本身不参与碰撞。
+- 模拟：参考 WaterfallTools 对每一步运动线段执行无限数学平面相交测试；穿越 Kill Plane 时精确停在交点并保存最终样本，不依赖 Plane 网格碰撞。
+- 默认位置：Kill Plane 初始位于 Actor 局部 Z=-1000，与默认 `Termination Height` 保持一致；用户可在模式面板中独立移动它。
+- 视口交互：Editor Mode 改为继承 `UBaseLegacyWidgetEdMode`，接入 UE5.8 默认选择模式使用的 Transform Widget 与组件视口交互桥接层。

@@ -4,6 +4,7 @@
 
 #include "Actors/TYWaterfallActor.h"
 #include "Components/SplineComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 
 namespace
@@ -137,6 +138,7 @@ int32 UTYWaterfallPathComponent::AdvanceSimulation(int32 StepBudget)
 	const float Step = FMath::Max(FixedDeltaTime, KINDA_SMALL_NUMBER);
 	const int32 StepLimit = FMath::Max(MaxSteps, 1);
 	const float DragFactor = 1.0f - FMath::Clamp(Drag * Step, 0.0f, 1.0f);
+	const bool bHasKillPlane = IsValid(Waterfall->GetKillPlaneComponent());
 	int32 StepsUsed = 0;
 
 	// Each iteration advances exactly one fixed step. A line trace covers the
@@ -151,6 +153,37 @@ int32 UTYWaterfallPathComponent::AdvanceSimulation(int32 StepBudget)
 		CurrentPoint.State = ETYWaterfallPointState::Airborne;
 
 		const FVector CandidatePosition = PreviousPosition + CurrentPoint.Velocity * Step;
+
+		// Match the reference tool: Kill Plane is an infinite mathematical plane,
+		// not a mesh collision surface. Test the complete movement segment so a
+		// fast point cannot tunnel through it between simulation steps.
+		if (const UStaticMeshComponent* KillPlane = Waterfall->GetKillPlaneComponent())
+		{
+			FVector PlaneNormal = KillPlane->GetUpVector().GetSafeNormal();
+			if (PlaneNormal.IsNearlyZero())
+			{
+				PlaneNormal = FVector::UpVector;
+			}
+			const FVector PlaneOrigin = KillPlane->GetComponentLocation();
+			const float PreviousSide = FVector::DotProduct(
+				PreviousPosition - PlaneOrigin, PlaneNormal);
+			const float CandidateSide = FVector::DotProduct(
+				CandidatePosition - PlaneOrigin, PlaneNormal);
+			const float Denominator = PreviousSide - CandidateSide;
+			if (PreviousSide * CandidateSide <= 0.0f
+				&& !FMath::IsNearlyZero(Denominator))
+			{
+				const float HitAlpha = FMath::Clamp(PreviousSide / Denominator, 0.0f, 1.0f);
+				CurrentPoint.Position = FMath::Lerp(PreviousPosition, CandidatePosition, HitAlpha);
+				CurrentPoint.HitNormal = PlaneNormal;
+				CurrentPoint.Velocity = FVector::ZeroVector;
+				CurrentPoint.State = ETYWaterfallPointState::Terminated;
+				SimulatedPoints.Add(CurrentPoint);
+				bSimulationComplete = true;
+				break;
+			}
+		}
+
 		FHitResult Hit;
 		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(TYWaterfallPath), true, Waterfall);
 		const bool bHit = World->LineTraceSingleByChannel(
@@ -182,7 +215,7 @@ int32 UTYWaterfallPathComponent::AdvanceSimulation(int32 StepBudget)
 		SimulatedPoints.Add(CurrentPoint);
 
 		if (CurrentPoint.State == ETYWaterfallPointState::Stopped
-			|| CurrentPoint.Position.Z <= WorldTerminationHeight
+			|| (!bHasKillPlane && CurrentPoint.Position.Z <= WorldTerminationHeight)
 			|| CurrentPoint.Velocity.IsNearlyZero()
 			|| StepsCompleted >= StepLimit)
 		{

@@ -4,7 +4,11 @@
 #include "TYWaterfallToolsEditorMode.h"
 
 #include "Actors/TYWaterfallActor.h"
+#include "Components/SplineComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Components/TYWaterfallSettingsComponent.h"
+#include "Editor.h"
+#include "Engine/Selection.h"
 #include "IDetailsView.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
@@ -26,7 +30,6 @@ void FTYWaterfallToolsEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& In
 	ModeDetailsView->SetIsPropertyEditingEnabledDelegate(
 		FIsPropertyEditingEnabled::CreateSP(
 			this, &FTYWaterfallToolsEditorModeToolkit::CanEditSettings));
-
 	ToolkitWidget = SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
 		.AutoHeight()
@@ -42,6 +45,30 @@ void FTYWaterfallToolsEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& In
 		[
 			SNew(STextBlock)
 			.Text(this, &FTYWaterfallToolsEditorModeToolkit::GetStatusText)
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 2.0f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("EditTopSpline", "Edit Top Spline"))
+				.IsEnabled(this, &FTYWaterfallToolsEditorModeToolkit::CanRunGenerationCommand)
+				.OnClicked(this, &FTYWaterfallToolsEditorModeToolkit::OnEditTopSplineClicked)
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.Padding(4.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("EditKillPlane", "Edit Kill Plane"))
+				.IsEnabled(this, &FTYWaterfallToolsEditorModeToolkit::CanRunGenerationCommand)
+				.OnClicked(this, &FTYWaterfallToolsEditorModeToolkit::OnEditKillPlaneClicked)
+			]
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
@@ -145,12 +172,39 @@ void FTYWaterfallToolsEditorModeToolkit::SetSelectedWaterfall(ATYWaterfallActor*
 	SelectedWaterfall = InWaterfall;
 	if (ModeDetailsView.IsValid())
 	{
-		// The authoring panel intentionally exposes only waterfall settings. Showing
-		// the whole actor duplicates Transform, Rendering, Collision and networking
-		// categories that belong in the editor's standard Details panel.
 		ModeDetailsView->SetObject(
 			InWaterfall ? InWaterfall->GetWaterfallSettings() : nullptr);
 	}
+}
+
+FReply FTYWaterfallToolsEditorModeToolkit::OnEditTopSplineClicked()
+{
+	if (GEditor && SelectedWaterfall.IsValid() && IsValid(SelectedWaterfall->GetTopSpline()))
+	{
+		GEditor->SelectNone(false, true, false);
+		GEditor->SelectActor(SelectedWaterfall.Get(), true, true, true);
+		GEditor->GetSelectedComponents()->Modify();
+		GEditor->GetSelectedComponents()->DeselectAll();
+		GEditor->SelectComponent(SelectedWaterfall->GetTopSpline(), true, true, true);
+		GEditor->NoteSelectionChange();
+		GEditor->RedrawLevelEditingViewports();
+	}
+	return FReply::Handled();
+}
+
+FReply FTYWaterfallToolsEditorModeToolkit::OnEditKillPlaneClicked()
+{
+	if (GEditor && SelectedWaterfall.IsValid() && IsValid(SelectedWaterfall->GetKillPlaneComponent()))
+	{
+		GEditor->SelectNone(false, true, false);
+		GEditor->SelectActor(SelectedWaterfall.Get(), true, true, true);
+		GEditor->GetSelectedComponents()->Modify();
+		GEditor->GetSelectedComponents()->DeselectAll();
+		GEditor->SelectComponent(SelectedWaterfall->GetKillPlaneComponent(), true, true, true);
+		GEditor->NoteSelectionChange();
+		GEditor->RedrawLevelEditingViewports();
+	}
+	return FReply::Handled();
 }
 
 FText FTYWaterfallToolsEditorModeToolkit::GetSelectionText() const

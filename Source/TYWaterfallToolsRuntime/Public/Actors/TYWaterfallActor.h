@@ -135,7 +135,7 @@ protected:
 	UPROPERTY(VisibleAnywhere, Instanced, Category = "Generated Paths", meta = (AllowPrivateAccess = "true"))
 	TArray<TObjectPtr<UTYWaterfallPathComponent>> GeneratedPaths;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Editor", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Kill Plane", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStaticMeshComponent> KillPlaneComponent;
 #endif
 
