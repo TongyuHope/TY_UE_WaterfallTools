@@ -193,7 +193,7 @@ protected:
 
 	/** Total simulation steps processed across all paths during one editor frame. */
 	UPROPERTY(EditAnywhere, Category = "Performance", meta = (ClampMin = "1", ClampMax = "10000"))
-	int32 SimulationStepsPerFrame = 256;
+	int32 SimulationStepsPerFrame = 128;
 
 	/** Show each generated path as a spline with its own stable debug color. */
 	UPROPERTY(EditAnywhere, Category = "Debug")

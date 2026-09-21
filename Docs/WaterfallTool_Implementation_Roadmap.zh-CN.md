@@ -540,10 +540,10 @@ struct FTYWaterfallSample
 - Singular 的 UV0 使用横向路径比例和纵向归一化距离，UV1 使用顶部样条厘米距离和纵向厘米距离，并乘以 Base UV Scale。
 - Per Path 使用 Ribbon Width；Cross 使用独立的 Cross Width，并绕路径切线旋转 90 度。
 - Singular、Per Path 和 Cross 复用 Mesh Sample Spacing、Base UV Scale 和阶段 5 材质通道。
-- Splash 使用路径最后一个稳定采样的切线与法线确定落水平面。
+- Splash 参考 WaterfallTools 的闭合轮廓挤出：终点宽度线、前后端帽和前后半径方向组成连续外轮廓，再沿轮廓方向分环挤出。
 - Splash Front Radius 和 Back Radius 分别控制水流前方、后方的延伸距离。
-- Splash Radial Segments 控制圆周密度，Splash Rings 控制从中心到边缘的径向密度。
-- Splash UV0 使用中心为 `(0.5, 0.5)` 的径向映射；UV1 使用落地平面的局部世界距离，UV2、UV3 和 Vertex Color 遵循四通道协议。
+- Splash Radial Segments 控制前后端帽的旋转细分，Splash Rings 控制轮廓向外挤出的环数。
+- Splash UV0 使用参考外轮廓的真实累计周长；UV1 使用落地平面的局部世界距离，UV2、UV3 和 Vertex Color 遵循四通道协议。
 
 ### Singular 边界
 
@@ -944,3 +944,13 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 修改文件：FX Point Data、VFX Component、Waterfall Actor、Settings、Path Builder、Runtime Build.cs、uplugin、Editor Toolkit、Details 和本路线图。
 - 验证方式：已完成静态 API 与差异检查；UE 5.8 编译和 Niagara 资产视觉验证由用户执行。
 - 下一步：创建符合用户参数协议的三个 Niagara System，验证自动/手动刷新、Actor 变换、清理、保存重开和 PIE。
+
+### 2026-09-21 - Splash 参考实现修正
+
+- 原因：旧 Splash 是终点径向圆盘，无法复现 WaterfallTools 的前后端帽、局部 UV 和流向材质表现。
+- 修正：按参考 `BuildMeshBuffers_Splash` 构造闭合宽度轮廓，在端帽处保持位置并旋转挤出方向，再沿轮廓生成多环顶点。
+- 材质数据：UV0.X 改为外轮廓真实累计距离，UV1 使用轮廓局部距离和挤出方向投影；UV2、UV3、Vertex Color 继续写入终点采样数据。
+- 绕序：Splash 三角形调整为朝向终点采样法线的正面绕序，避免单面材质从背面观察时消失。
+- 平面：Splash 不再复用瀑布墙面的采样法线，改用入水面的水平法线构造宽度轴和落水轴，确保网格与水面平行。
+- 朝向：Splash 先按参考插件完成闭合轮廓，再将整个轮廓、挤出方向和局部 UV 方向绕入水面中心 Z 轴旋转 180 度，避免仅反转落水轴造成端帽交叉。
+- 验证方式：未编译；由用户在 UE 5.8 中验证 Splash 材质动画、遮罩、正面可见性及与 Per-Path/Cross 的组合。
