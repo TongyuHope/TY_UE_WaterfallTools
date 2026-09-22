@@ -46,5 +46,25 @@ void UTYWaterfallSettingsComponent::PostEditChangeProperty(
 			}
 		}
 	}
+
+	if (PropertyChangedEvent.GetPropertyName()
+		== GET_MEMBER_NAME_CHECKED(UTYWaterfallSettingsComponent, bShowBakedMesh))
+	{
+		if (ATYWaterfallActor* Waterfall = GetOwner<ATYWaterfallActor>())
+		{
+			Waterfall->SetShowBakedMesh(bShowBakedMesh);
+		}
+	}
+}
+
+void UTYWaterfallSettingsComponent::SetShowBakedMesh(bool bInShowBakedMesh)
+{
+	Modify();
+	bShowBakedMesh = bInShowBakedMesh;
+	if (ATYWaterfallActor* Waterfall = GetOwner<ATYWaterfallActor>())
+	{
+		Waterfall->SetShowBakedMesh(bShowBakedMesh);
+	}
+	MarkPackageDirty();
 }
 #endif

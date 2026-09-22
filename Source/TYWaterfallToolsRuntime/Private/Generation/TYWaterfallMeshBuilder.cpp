@@ -74,6 +74,8 @@ bool FTYWaterfallMeshBuilder::BuildMesh()
 			2, Waterfall->WaterfallSettings->GetCrossMaterial());
 		Waterfall->DynamicMeshComponent->SetMaterial(
 			3, Waterfall->WaterfallSettings->GetSplashMaterial());
+		Waterfall->SetShowBakedMesh(
+			Waterfall->WaterfallSettings->ShouldShowBakedMesh());
 		Waterfall->MarkPackageDirty();
 	}
 	return bBuilt;

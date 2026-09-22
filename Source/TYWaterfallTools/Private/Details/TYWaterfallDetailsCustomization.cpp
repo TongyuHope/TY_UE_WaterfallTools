@@ -45,6 +45,7 @@ void FTYWaterfallSettingsDetails::CustomizeDetails(IDetailLayoutBuilder& DetailB
 	DetailBuilder.EditCategory(TEXT("Mesh"), LOCTEXT("Mesh", "Mesh"), ECategoryPriority::TypeSpecific);
 	DetailBuilder.EditCategory(TEXT("Material"), LOCTEXT("Material", "Material"), ECategoryPriority::TypeSpecific);
 	DetailBuilder.EditCategory(TEXT("Niagara"), LOCTEXT("Niagara", "Niagara"), ECategoryPriority::TypeSpecific);
+	DetailBuilder.EditCategory(TEXT("Bake"), LOCTEXT("Bake", "Bake"), ECategoryPriority::TypeSpecific);
 	DetailBuilder.EditCategory(TEXT("Performance"), LOCTEXT("Performance", "Performance"), ECategoryPriority::Uncommon);
 	DetailBuilder.EditCategory(TEXT("Debug"), LOCTEXT("Debug", "Debug"), ECategoryPriority::Uncommon);
 }

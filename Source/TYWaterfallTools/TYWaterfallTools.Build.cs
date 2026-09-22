@@ -34,14 +34,20 @@ public class TYWaterfallTools : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
+				"AssetTools",
+				"ContentBrowser",
 				"ComponentVisualizers",
 				"CoreUObject",
+				"EditorScriptingUtilities",
 				"Engine",
 				"GeometryCore",
 				"GeometryFramework",
+				"GeometryScriptingCore",
+				"GeometryScriptingEditor",
 				"TYWaterfallToolsRuntime",
 				"Slate",
 				"SlateCore",
+				"StaticMeshDescription",
 				"InputCore",
 				"EditorFramework",
 				"EditorStyle",

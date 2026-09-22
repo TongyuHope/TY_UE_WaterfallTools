@@ -36,6 +36,7 @@ private:
 	FReply OnEditKillPlaneClicked();
 	FReply OnGeneratePathsClicked();
 	FReply OnGenerateMeshClicked();
+	FReply OnBakeStaticMeshClicked();
 	FReply OnRefreshNiagaraClicked();
 	FReply OnClearClicked();
 	FReply OnCancelClicked();

@@ -627,14 +627,14 @@ Top 每条路径提供首点，Bottom 每条路径提供末点。Middle 按 Niag
 
 ### 实施步骤
 
-- [ ] Editor 模块添加 Geometry Scripting 和 Asset Tools 相关依赖。
-- [ ] 合并需要烘焙的 Dynamic Mesh。
-- [ ] 让用户选择输出目录和资产名。
-- [ ] 创建或覆盖 Static Mesh 前给出明确提示。
-- [ ] 保存材质槽名称和材质引用。
-- [ ] 设置 `BakedMeshComponent`。
-- [ ] 提供动态/烘焙网格显示切换。
-- [ ] 标记资产包和关卡包为 Dirty。
+- [x] Editor 模块添加 Geometry Scripting 和 Asset Tools 相关依赖。
+- [x] 使用阶段 8 已合并的 Dynamic Mesh 作为唯一烘焙源。
+- [x] 通过 Content Browser 保存对话框选择输出目录和资产名。
+- [x] 创建或覆盖 Static Mesh 前给出明确提示。
+- [x] 保存四个固定材质槽名称和材质引用。
+- [x] 设置 `BakedMeshComponent`。
+- [x] 提供动态/烘焙网格显示切换。
+- [x] 标记资产包和关卡包为 Dirty。
 - [ ] 验证烘焙资产重启编辑器后仍有效。
 
 ### 验收标准
@@ -803,7 +803,7 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 
 ## 11. 下一步
 
-阶段 9 Niagara 已完成代码实现，当前等待 UE 5.8 编译与 Niagara 资产内的数据读取、空间转换和生命周期验收。
+阶段 10 静态网格烘焙已完成代码实现，当前等待 UE 5.8 编译与资产持久化、材质槽、UV 和显示切换验收。
 
 ### 2026-09-18 - 阶段 0 / Runtime 模块边界
 
@@ -966,3 +966,11 @@ Source/TYWaterfallTools/Private/TYWaterfallToolsEditorModeCommands.cpp
 - 默认位置：Kill Plane 初始位于 Actor 局部 Z=-1000，与默认 `Termination Height` 保持一致；用户可在模式面板中独立移动它。
 - 视口交互：Editor Mode 改为继承 `UBaseLegacyWidgetEdMode`，接入 UE5.8 默认选择模式使用的 Transform Widget 与组件视口交互桥接层。
 - 碰撞开关：Simulation 新增 `Enable World Collision`；关闭时跳过场景碰撞和表面滑动，但重力、阻力、步进及 Kill Plane 数学平面终止仍然生效。
+
+### 2026-09-22 - 阶段 10 / 静态网格烘焙实现
+
+- 完成：Editor 模块新增 Static Mesh Baker，通过 Content Browser 选择资产路径；覆盖已有资产前二次确认；从合并 Dynamic Mesh 保存四组 UV、顶点色和四个固定材质槽；烘焙后绑定 `BakedMeshComponent` 并切换为静态预览。
+- 修改文件：Editor Build.cs、uplugin、Static Mesh Baker、Editor Mode Toolkit、Waterfall Actor、Settings Component 和 Mesh Builder。
+- 验证方式：已完成源码和 API 静态检查，等待 UE 5.8 编译、资产重启持久化、材质与 UV 验收。
+- 遗留问题：重复覆盖依赖 Unreal Editor 的强制删除流程；覆盖前会明确警告，取消不会修改原资产。
+- 下一步：完成阶段 10 编辑器验收后，再决定是否在烘焙完成时提供清除动态源数据的可选项。

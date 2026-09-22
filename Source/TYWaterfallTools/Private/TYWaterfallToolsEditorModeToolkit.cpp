@@ -7,6 +7,7 @@
 #include "Components/SplineComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TYWaterfallSettingsComponent.h"
+#include "Generation/TYWaterfallStaticMeshBaker.h"
 #include "Editor.h"
 #include "Engine/Selection.h"
 #include "IDetailsView.h"
@@ -112,6 +113,16 @@ void FTYWaterfallToolsEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& In
 				.IsEnabled(this, &FTYWaterfallToolsEditorModeToolkit::CanRunGenerationCommand)
 				.OnClicked(this, &FTYWaterfallToolsEditorModeToolkit::OnRefreshNiagaraClicked)
 			]
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 0.0f, 8.0f, 4.0f)
+		[
+			SNew(SButton)
+			.Text(LOCTEXT("BakeStaticMesh", "Bake Static Mesh"))
+			.ToolTipText(LOCTEXT("BakeStaticMeshTooltip", "Save the current dynamic waterfall mesh as a Static Mesh asset."))
+			.IsEnabled(this, &FTYWaterfallToolsEditorModeToolkit::CanRunGenerationCommand)
+			.OnClicked(this, &FTYWaterfallToolsEditorModeToolkit::OnBakeStaticMeshClicked)
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
@@ -273,6 +284,15 @@ FReply FTYWaterfallToolsEditorModeToolkit::OnGenerateMeshClicked()
 	if (ATYWaterfallActor* Waterfall = SelectedWaterfall.Get())
 	{
 		Waterfall->GenerateMesh();
+	}
+	return FReply::Handled();
+}
+
+FReply FTYWaterfallToolsEditorModeToolkit::OnBakeStaticMeshClicked()
+{
+	if (ATYWaterfallActor* Waterfall = SelectedWaterfall.Get())
+	{
+		FTYWaterfallStaticMeshBaker::Bake(*Waterfall);
 	}
 	return FReply::Handled();
 }

@@ -60,6 +60,10 @@ public:
 	float GetNiagaraBoundsPadding() const { return FMath::Max(NiagaraBoundsPadding, 0.0f); }
 	bool ShouldShowPathDebug() const { return bShowPathDebug; }
 	bool ShouldShowMeshWireframe() const { return bShowMeshWireframe; }
+#if WITH_EDITOR
+	bool ShouldShowBakedMesh() const { return bShowBakedMesh; }
+	void SetShowBakedMesh(bool bInShowBakedMesh);
+#endif
 
 protected:
 	/** Number of paths distributed across the selected part of the top spline. */
@@ -207,4 +211,8 @@ protected:
 	/** Draw the generated mesh triangle edges and vertices while authoring. */
 	UPROPERTY(EditAnywhere, Category = "Debug")
 	bool bShowMeshWireframe = false;
+
+	/** Switches the viewport and packaged actor from generated geometry to the baked asset. */
+	UPROPERTY(EditAnywhere, Category = "Bake", meta = (DisplayName = "Show Baked Mesh"))
+	bool bShowBakedMesh = false;
 };

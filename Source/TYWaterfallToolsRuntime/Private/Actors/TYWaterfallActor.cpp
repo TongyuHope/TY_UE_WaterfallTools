@@ -10,6 +10,7 @@
 #include "Components/SplineComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "NiagaraSystem.h"
+#include "UDynamicMesh.h"
 
 #if WITH_EDITORONLY_DATA
 #include "UObject/ConstructorHelpers.h"
@@ -45,7 +46,7 @@ ATYWaterfallActor::ATYWaterfallActor()
 	BakedMeshComponent->SetupAttachment(RootComp);
 	BakedMeshComponent->SetMobility(EComponentMobility::Movable);
 	BakedMeshComponent->SetVisibility(false);
-	BakedMeshComponent->SetHiddenInGame(true);
+	BakedMeshComponent->SetHiddenInGame(false);
 	BakedMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	DynamicMeshComponent = CreateDefaultSubobject<UTYWaterfallMeshComponent>(TEXT("DynamicMesh"));
@@ -301,6 +302,35 @@ void ATYWaterfallActor::SetKillPlaneEditorVisible(bool bVisible)
 	{
 		KillPlaneComponent->SetVisibility(bVisible, false);
 		KillPlaneComponent->SetHiddenInGame(true);
+	}
+}
+
+void ATYWaterfallActor::SetBakedStaticMesh(UStaticMesh* StaticMesh)
+{
+	if (IsValid(BakedMeshComponent))
+	{
+		BakedMeshComponent->Modify();
+		BakedMeshComponent->SetStaticMesh(StaticMesh);
+		BakedMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		MarkPackageDirty();
+	}
+}
+
+void ATYWaterfallActor::SetShowBakedMesh(bool bShowBakedMesh)
+{
+	const bool bHasBakedMesh = IsValid(BakedMeshComponent)
+		&& IsValid(BakedMeshComponent->GetStaticMesh());
+	const bool bUseBakedMesh = bShowBakedMesh && bHasBakedMesh;
+
+	if (IsValid(BakedMeshComponent))
+	{
+		BakedMeshComponent->SetVisibility(bUseBakedMesh);
+		BakedMeshComponent->SetHiddenInGame(false);
+	}
+	if (IsValid(DynamicMeshComponent))
+	{
+		DynamicMeshComponent->SetVisibility(!bUseBakedMesh
+			&& DynamicMeshComponent->GetDynamicMesh()->GetTriangleCount() > 0);
 	}
 }
 #endif

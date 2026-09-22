@@ -12,6 +12,7 @@
 class USceneComponent;
 class USplineComponent;
 class UStaticMeshComponent;
+class UStaticMesh;
 class UTYWaterfallMeshComponent;
 class UTYWaterfallPathComponent;
 class UTYWaterfallSettingsComponent;
@@ -102,6 +103,9 @@ public:
 	void SetPathDebugVisible(bool bVisible);
 	/** Shows the authoring plane only while the Waterfall editor mode owns this actor. */
 	void SetKillPlaneEditorVisible(bool bVisible);
+	/** Assigns the generated asset and switches component visibility without rebuilding geometry. */
+	void SetBakedStaticMesh(UStaticMesh* StaticMesh);
+	void SetShowBakedMesh(bool bShowBakedMesh);
 #endif
 
 protected:
