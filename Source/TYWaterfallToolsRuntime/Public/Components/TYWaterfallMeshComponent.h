@@ -28,6 +28,7 @@ public:
 		bool bGenerateSplash,
 		float RibbonWidth,
 		float CrossWidth,
+		float BottomWidthScale,
 		int32 PerPathSubdivisions,
 		int32 CrossSubdivisions,
 		FVector2D BaseUVScale,

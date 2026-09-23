@@ -20,6 +20,8 @@ enum class EWaterfallMaterialSlot : int32
 
 struct FWaterfallMeshAttributes
 {
+	// The four UV overlays and primary color overlay are copied into the baked
+	// Static Mesh by Geometry Script. Keep their meanings stable for materials.
 	FDynamicMeshNormalOverlay* Normals = nullptr;
 	FDynamicMeshUVOverlay* UV0 = nullptr;
 	FDynamicMeshUVOverlay* UV1 = nullptr;
@@ -80,6 +82,8 @@ void SetTriangleAttributes(
 
 FVector4f MakeWaterfallVertexColor(FVector Direction, float Turbulence)
 {
+	// RGB stores a signed direction remapped from [-1, 1] to [0, 1]. Materials
+	// decode it with Direction = VertexColor.rgb * 2 - 1. Alpha stores turbulence.
 	Direction = Direction.GetSafeNormal();
 	const FVector EncodedDirection = (Direction + FVector::OneVector) * 0.5;
 	return FVector4f(
@@ -250,14 +254,20 @@ bool AppendSingular(
 			NormalIDs.Add(Attributes.Normals->AppendElement(FVector3f(
 				WorldToMesh.TransformVectorNoScale(WorldNormal).GetSafeNormal())));
 			UV0IDs.Add(Attributes.UV0->AppendElement(FVector2f(
+				// Singular: X is the normalized width/path coordinate; Y is distance
+				// along the shared waterfall sheet.
 				PathAlpha * BaseUVScale.X,
 				Sample.NormalizedDistance * BaseUVScale.Y)));
 			UV1IDs.Add(Attributes.UV1->AppendElement(FVector2f(
+				// Singular: X identifies the source top-spline path; Y is world-unit
+				// travel distance, scaled for material tiling.
 				SortedPaths[PathIndex].TopSplineDistance * BaseUVScale.X,
 				Sample.Distance * BaseUVScale.Y)));
 			UV2IDs.Add(Attributes.UV2->AppendElement(FVector2f(
+				// Shared protocol: UV2 = (speed in cm/s, accumulated flow time in s).
 				Sample.Speed, Sample.Flow * BaseUVScale.Y)));
 			UV3IDs.Add(Attributes.UV3->AppendElement(FVector2f(
+				// Shared protocol: UV3 = (stable per-path random seed, top-spline t).
 				SortedPaths[PathIndex].UVSeed, SortedPaths[PathIndex].TopSplinePosition)));
 			ColorIDs.Add(Attributes.Colors->AppendElement(
 				MakeWaterfallVertexColor(Sample.Velocity, Sample.Turbulence)));
@@ -299,6 +309,7 @@ bool AppendRibbon(
 	const FTransform& WorldToMesh,
 	FVector WorldWidthAxis,
 	float Width,
+	float BottomWidthScale,
 	int32 Subdivisions,
 	FVector2D BaseUVScale,
 	float RotationDegrees,
@@ -368,10 +379,15 @@ bool AppendRibbon(
 		const FVector WorldNormal = bCrossPlane
 			? FVector::CrossProduct(WorldTangent, WorldAcross).GetSafeNormal()
 			: FVector::CrossProduct(WorldAcross, WorldTangent).GetSafeNormal();
+		// Width is the top width. Interpolate its scale along normalized path
+		// distance so one setting can produce the common narrow-top/wide-bottom
+		// waterfall silhouette without changing path simulation.
+		const float WidthScale = FMath::Lerp(
+			1.0f, BottomWidthScale, FMath::Clamp(Sample.NormalizedDistance, 0.0f, 1.0f));
 		// WaterfallTools treats Per-Path width as the total width, while Cross
 		// width is the distance from its centre to either side.
 		const float HalfWidth = MaterialSlot == EWaterfallMaterialSlot::Cross
-			? Width : Width * 0.5f;
+			? Width * WidthScale : Width * WidthScale * 0.5f;
 		const FVector HalfWidthOffset = WorldAcross * HalfWidth;
 		// Cross uses the same left/right ordering as the reference builder:
 		// left is +Normal and right is -Normal. This keeps the ribbon winding
@@ -401,10 +417,15 @@ bool AppendRibbon(
 				WorldToMesh.TransformPosition(WorldPosition))));
 			NormalIDs.Add(Attributes.Normals->AppendElement(LocalNormal));
 			UV0IDs.Add(Attributes.UV0->AppendElement(FVector2f(
+				// Ribbon surfaces: X is across the ribbon (0..1); Y is normalized
+				// distance from the top to the endpoint.
 				ColumnAlpha * BaseUVScale.X,
 				Sample.NormalizedDistance * BaseUVScale.Y)));
 			UV1IDs.Add(Attributes.UV1->AppendElement(FVector2f(
+				// Ribbon surfaces: X is signed local width in Unreal units; Y is
+				// accumulated path distance in Unreal units.
 				Across * BaseUVScale.X, Sample.Distance * BaseUVScale.Y)));
+			// UV2, UV3 and vertex color use the shared material protocol above.
 			UV2IDs.Add(Attributes.UV2->AppendElement(UV2));
 			UV3IDs.Add(Attributes.UV3->AppendElement(UV3));
 			ColorIDs.Add(Attributes.Colors->AppendElement(Color));
@@ -543,8 +564,12 @@ bool AppendSplashReference(
 			const FVector Position = Positions[OutlineIndex] + Directions[OutlineIndex] * Radii[OutlineIndex] * Falloff;
 			VertexIDs.Add(Mesh.AppendVertex(FVector3d(WorldToMesh.TransformPosition(Position))));
 			NormalIDs.Add(Attributes.Normals->AppendElement(LocalNormal));
+			// Splash: UV0 follows the closed perimeter and uses Y as radial falloff
+			// (1 at the outline, 0 at the displaced inner ring).
 			UV0IDs.Add(Attributes.UV0->AppendElement(FVector2f(OuterDistance[OutlineIndex] / OuterPerimeter, 1.0f - Falloff)));
 			const FVector LocalUV = LocalDirections[OutlineIndex] * Radii[OutlineIndex] * Falloff;
+			// Splash: UV1 stores the local across/forward projection of the radial
+			// displacement, in Unreal units. UV2/UV3 remain endpoint metadata.
 			UV1IDs.Add(Attributes.UV1->AppendElement(FVector2f(LocalDistances[OutlineIndex] + FVector::DotProduct(WorldAcross, LocalUV), FVector::DotProduct(WorldForward, LocalUV))));
 			UV2IDs.Add(Attributes.UV2->AppendElement(UV2));
 			UV3IDs.Add(Attributes.UV3->AppendElement(UV3));
@@ -590,6 +615,7 @@ bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 	bool bGenerateSplash,
 	float RibbonWidth,
 	float CrossWidth,
+	float BottomWidthScale,
 	int32 PerPathSubdivisions,
 	int32 CrossSubdivisions,
 	FVector2D BaseUVScale,
@@ -613,6 +639,9 @@ bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 	const FTransform WorldToMesh = GetComponentTransform().Inverse();
 	const float SafeRibbonWidth = FMath::Max(RibbonWidth, 1.0f);
 	const float SafeCrossWidth = FMath::Max(CrossWidth, 1.0f);
+	// Keep a non-zero endpoint width so the final ribbon row cannot collapse into
+	// degenerate triangles when users request a very narrow bottom.
+	const float SafeBottomWidthScale = FMath::Max(BottomWidthScale, 0.01f);
 	const float SafeFrontRadius = FMath::Max(FrontRadius, 1.0f);
 	const float SafeBackRadius = FMath::Max(BackRadius, 1.0f);
 	const int32 SafeRadialSegments = FMath::Clamp(RadialSegments, 3, 128);
@@ -638,7 +667,8 @@ bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 
 			BuiltSurfaceCount += AppendRibbon(NewMesh, Attributes,
 				Path->GetResampledSamples(), WorldToMesh, WorldWidthAxis,
-				SafeRibbonWidth, PerPathSubdivisions, BaseUVScale, 0.0f, Path->GetUVSeed(),
+				SafeRibbonWidth, SafeBottomWidthScale, PerPathSubdivisions,
+				BaseUVScale, 0.0f, Path->GetUVSeed(),
 				Path->GetNormalizedTopSplinePosition(),
 				EWaterfallMaterialSlot::PerPath) ? 1 : 0;
 		}
@@ -652,7 +682,8 @@ bool UTYWaterfallMeshComponent::BuildCombinedMesh(
 			{
 				BuiltSurfaceCount += AppendRibbon(NewMesh, Attributes,
 					Path->GetResampledSamples(), WorldToMesh, WorldWidthAxis,
-					SafeCrossWidth, CrossSubdivisions, BaseUVScale, 90.0f, Path->GetUVSeed(),
+					SafeCrossWidth, SafeBottomWidthScale, CrossSubdivisions,
+					BaseUVScale, 90.0f, Path->GetUVSeed(),
 					Path->GetNormalizedTopSplinePosition(),
 					EWaterfallMaterialSlot::Cross) ? 1 : 0;
 			}

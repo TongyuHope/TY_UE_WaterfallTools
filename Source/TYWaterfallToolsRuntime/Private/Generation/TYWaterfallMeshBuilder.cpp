@@ -51,6 +51,7 @@ bool FTYWaterfallMeshBuilder::BuildMesh()
 		Waterfall->WaterfallSettings->ShouldGenerateSplash(),
 		Waterfall->WaterfallSettings->GetRibbonWidth(),
 		Waterfall->WaterfallSettings->GetCrossWidth(),
+		Waterfall->WaterfallSettings->GetBottomWidthScale(),
 		Waterfall->WaterfallSettings->GetPerPathSubdivisions(),
 		Waterfall->WaterfallSettings->GetCrossSubdivisions(),
 		Waterfall->WaterfallSettings->GetBaseUVScale(),

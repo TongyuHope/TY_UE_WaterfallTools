@@ -41,6 +41,7 @@ public:
 	bool ShouldGenerateSplash() const { return bGenerateSplash; }
 	float GetRibbonWidth() const { return FMath::Max(RibbonWidth, 1.0f); }
 	float GetCrossWidth() const { return FMath::Max(CrossWidth, 1.0f); }
+	float GetBottomWidthScale() const { return FMath::Max(BottomWidthScale, 0.01f); }
 	int32 GetPerPathSubdivisions() const { return FMath::Clamp(PerPathSubdivisions, 0, 32); }
 	int32 GetCrossSubdivisions() const { return FMath::Clamp(CrossSubdivisions, 0, 32); }
 	float GetMeshSampleSpacing() const { return FMath::Max(MeshSampleSpacing, 1.0f); }
@@ -131,6 +132,10 @@ protected:
 	/** Width of the perpendicular Cross plane generated along every path. */
 	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "1.0", EditCondition = "bGenerateCross", EditConditionHides))
 	float CrossWidth = 50.0f;
+
+	/** Multiplier applied at the path endpoint; Ribbon/Cross Width remain the top widths. */
+	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (DisplayName = "Bottom Width Scale", ClampMin = "0.01", UIMin = "0.1", UIMax = "5.0", EditCondition = "bGeneratePerPath || bGenerateCross", EditConditionHides))
+	float BottomWidthScale = 1.0f;
 
 	/** Interior vertices across each Per-Path ribbon, matching WaterfallTools. */
 	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (ClampMin = "0", ClampMax = "32", EditCondition = "bGeneratePerPath", EditConditionHides))
